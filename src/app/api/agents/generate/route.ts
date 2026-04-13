@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 import { generateChat, generateChatStream, createStreamTransformer } from "@/lib/ai";
 import type { AgentType } from "@/lib/types";
 
@@ -94,6 +94,8 @@ function buildContextPrompt(
 // POST /api/agents/generate — Non-streaming generation
 export async function POST(request: Request) {
   try {
+    await ensureDbInitialized();
+
     const body = await request.json();
     const {
       agentType,

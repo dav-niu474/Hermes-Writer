@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 const VALID_CATEGORIES = ["characters", "worldbuilding", "outline", "rules", "style"];
 
 // GET /api/specs?novelId=xxx&category=xxx — list specs for a novel
 export async function GET(request: Request) {
   try {
+    await ensureDbInitialized();
     const { searchParams } = new URL(request.url);
     const novelId = searchParams.get("novelId");
     const category = searchParams.get("category");
@@ -47,6 +48,7 @@ export async function GET(request: Request) {
 // POST /api/specs — create a new spec
 export async function POST(request: Request) {
   try {
+    await ensureDbInitialized();
     const body = await request.json();
     const { novelId, category, title, content, parentSpecId } = body;
 

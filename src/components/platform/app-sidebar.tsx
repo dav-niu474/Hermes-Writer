@@ -23,7 +23,9 @@ import {
   Bot,
   Feather,
   Sparkles,
+  Plus,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 const navItems: { view: ViewType; label: string; icon: React.ReactNode }[] = [
@@ -104,8 +106,15 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter>
-        <div className="px-2 py-1.5">
+      <SidebarFooter className="gap-2">
+        <Button
+          className="w-full justify-start gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-md"
+          onClick={() => setIsCreatingNovel(true)}
+        >
+          <Plus className="size-4" />
+          创建新作品
+        </Button>
+        <div className="px-2 py-1">
           <p className="text-xs text-muted-foreground text-center">
             Powered by Hermes Agent
           </p>

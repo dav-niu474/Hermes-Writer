@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 export async function GET(request: Request) {
   try {
+    await ensureDbInitialized();
     const { searchParams } = new URL(request.url);
     const novelId = searchParams.get("novelId");
 

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 const VALID_STATUSES = ["draft", "validated", "in_progress", "completed", "archived"];
 
 // GET /api/proposals?novelId=xxx&status=xxx — list proposals for a novel
 export async function GET(request: Request) {
   try {
+    await ensureDbInitialized();
     const { searchParams } = new URL(request.url);
     const novelId = searchParams.get("novelId");
     const status = searchParams.get("status");
@@ -47,6 +48,7 @@ export async function GET(request: Request) {
 // POST /api/proposals — create a new change proposal
 export async function POST(request: Request) {
   try {
+    await ensureDbInitialized();
     const body = await request.json();
     const { novelId, title, description, scope, impact, tasks } = body;
 

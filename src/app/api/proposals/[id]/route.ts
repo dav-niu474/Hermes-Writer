@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 // Valid status transitions map: currentStatus → [allowed next statuses]
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -17,6 +17,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
 
     const proposal = await db.changeProposal.findUnique({
       where: { id },
@@ -50,6 +51,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
     const body = await request.json();
     const { title, description, scope, impact, tasks, status } = body;
 
@@ -124,6 +126,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
 
     const proposal = await db.changeProposal.findUnique({ where: { id } });
     if (!proposal) {

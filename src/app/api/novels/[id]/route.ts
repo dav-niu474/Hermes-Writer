@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 export async function GET(
   _request: Request,
@@ -7,6 +7,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
     const novel = await db.novel.findUnique({
       where: { id },
       include: {
@@ -34,6 +35,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
     const body = await request.json();
     const { title, description, genre, status, coverImage } = body;
 
@@ -61,6 +63,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
     await db.novel.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {

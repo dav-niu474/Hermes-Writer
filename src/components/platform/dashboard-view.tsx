@@ -101,7 +101,7 @@ export function DashboardView() {
             Agent多智能体架构，集剧情策划、内容创作、角色管理、世界观构建、质量审核于一体的智能网文创作平台。
           </p>
           <div className="flex gap-3">
-            <Button onClick={openCreateDialog}>
+            <Button className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-md" onClick={openCreateDialog}>
               <Plus className="size-4 mr-2" />
               创建新作品
             </Button>
@@ -193,15 +193,15 @@ export function DashboardView() {
         ) : novels.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
-              <div className="size-16 rounded-full bg-muted flex items-center justify-center">
-                <BookOpen className="size-8 text-muted-foreground" />
+              <div className="size-16 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 flex items-center justify-center">
+                <BookOpen className="size-8 text-amber-500" />
               </div>
               <div className="text-center">
                 <h3 className="font-medium mb-1">还没有作品</h3>
                 <p className="text-sm text-muted-foreground mb-4">
                   创建你的第一部网文，让 Hermes Agent 助力你的创作
                 </p>
-                <Button onClick={openCreateDialog}>
+                <Button className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white" onClick={openCreateDialog}>
                   <Plus className="size-4 mr-2" />
                   开始创作
                 </Button>

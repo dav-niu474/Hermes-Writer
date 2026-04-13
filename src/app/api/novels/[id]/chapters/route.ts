@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 export async function GET(
   _request: Request,
@@ -7,6 +7,7 @@ export async function GET(
 ) {
   try {
     const { id: novelId } = await params;
+    await ensureDbInitialized();
     const chapters = await db.chapter.findMany({
       where: { novelId },
       orderBy: { chapterNumber: "asc" },
@@ -24,6 +25,7 @@ export async function POST(
 ) {
   try {
     const { id: novelId } = await params;
+    await ensureDbInitialized();
     const body = await request.json();
     const { title, content, summary } = body;
 

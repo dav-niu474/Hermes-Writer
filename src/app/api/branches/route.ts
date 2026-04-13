@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 const VALID_STATUSES = ["active", "merged", "abandoned"];
 
 // GET /api/branches?novelId=xxx&status=xxx — list branches for a novel
 export async function GET(request: Request) {
   try {
+    await ensureDbInitialized();
     const { searchParams } = new URL(request.url);
     const novelId = searchParams.get("novelId");
     const status = searchParams.get("status");
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
 // POST /api/branches — create a new branch
 export async function POST(request: Request) {
   try {
+    await ensureDbInitialized();
     const body = await request.json();
     const { novelId, name, description, parentBranchId, basedOnSnapshotId } = body;
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 // GET /api/specs/[id] — get a single spec with its deltas
 export async function GET(
@@ -8,6 +8,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
 
     const spec = await db.novelSpec.findUnique({
       where: { id },
@@ -41,6 +42,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
     const body = await request.json();
     const { title, content, category, status, parentSpecId } = body;
 
@@ -87,6 +89,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
 
     const spec = await db.novelSpec.findUnique({ where: { id } });
     if (!spec) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { useAppStore } from "@/lib/store";
@@ -12,6 +13,13 @@ import { CreateNovelDialog } from "@/components/platform/create-novel-dialog";
 
 export default function Home() {
   const { currentView } = useAppStore();
+
+  // Auto-initialize database on first load (silent, idempotent)
+  useEffect(() => {
+    fetch("/api/db/init", { method: "POST" }).catch(() => {
+      // Silently ignore — API routes also auto-init via ensureDbInitialized()
+    });
+  }, []);
 
   return (
     <SidebarProvider>

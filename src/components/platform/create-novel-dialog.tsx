@@ -88,12 +88,31 @@ export function CreateNovelDialog() {
       resetForm();
       setIsCreatingNovel(false);
 
+      // Auto-create first chapter so user can start writing immediately
+      let firstChapterId: string | null = null;
+      try {
+        const chRes = await fetch(`/api/novels/${novel.id}/chapters`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: "第一章" }),
+        });
+        if (chRes.ok) {
+          const chapter = await chRes.json();
+          firstChapterId = chapter.id;
+        }
+      } catch {
+        // Non-critical: user can create chapter manually
+      }
+
       // Update novels list
       const updatedNovels = [novel, ...novels];
       setNovels(updatedNovels);
 
-      // Navigate to workspace
+      // Navigate to workspace and select the first chapter
       setSelectedNovel(novel.id);
+      if (firstChapterId) {
+        useAppStore.getState().setSelectedChapter(firstChapterId);
+      }
       setCurrentView("workspace");
 
       toast({
@@ -170,10 +189,10 @@ export function CreateNovelDialog() {
             <Label htmlFor="novel-desc">作品简介</Label>
             <Textarea
               id="novel-desc"
-              placeholder="简要描述你的故事..."
+              placeholder="简要描述你的故事（可稍后在设置中补充）"
               value={formDescription}
               onChange={(e) => setFormDescription(e.target.value)}
-              rows={4}
+              rows={3}
             />
           </div>
         </div>

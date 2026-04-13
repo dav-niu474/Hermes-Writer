@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 export async function GET(
   _request: Request,
@@ -7,6 +7,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
+
     const chapter = await db.chapter.findUnique({ where: { id } });
     if (!chapter) {
       return NextResponse.json({ error: "Chapter not found" }, { status: 404 });
@@ -24,6 +26,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
     const body = await request.json();
     const { title, content, summary, status } = body;
 
@@ -61,6 +64,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
+
     const chapter = await db.chapter.findUnique({ where: { id } });
     if (!chapter) {
       return NextResponse.json({ error: "Chapter not found" }, { status: 404 });

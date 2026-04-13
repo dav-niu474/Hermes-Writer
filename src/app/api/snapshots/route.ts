@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 const VALID_SNAPSHOT_TYPES = ["manual", "auto_pre_write", "auto_post_write"];
 
 // GET /api/snapshots?novelId=xxx&type=xxx — list snapshots for a novel
 export async function GET(request: Request) {
   try {
+    await ensureDbInitialized();
     const { searchParams } = new URL(request.url);
     const novelId = searchParams.get("novelId");
     const type = searchParams.get("type");
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
 // POST /api/snapshots — create a new chapter snapshot
 export async function POST(request: Request) {
   try {
+    await ensureDbInitialized();
     const body = await request.json();
     const {
       novelId,

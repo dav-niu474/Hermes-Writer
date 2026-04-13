@@ -93,6 +93,7 @@ export function WorkspaceView() {
     setWorldSettings,
     isAgentRunning,
     setIsAgentRunning,
+    setIsCreatingNovel,
     setCurrentView,
   } = useAppStore();
 
@@ -379,15 +380,24 @@ export function WorkspaceView() {
   // No novel selected state
   if (!selectedNovelId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4 p-6">
-        <BookOpen className="size-16 text-muted-foreground" />
-        <div className="text-center">
-          <h2 className="text-lg font-medium mb-1">请选择一个作品</h2>
-          <p className="text-sm text-muted-foreground">在作品管理中选择或创建一个作品来开始创作</p>
+      <div className="flex flex-col items-center justify-center h-full gap-6 p-6">
+        <div className="size-20 rounded-full bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 flex items-center justify-center">
+          <BookOpen className="size-10 text-amber-500" />
         </div>
-        <Button variant="outline" onClick={() => setCurrentView("novels")}>
-          <BookOpen className="size-4 mr-2" />前往作品管理
-        </Button>
+        <div className="text-center max-w-sm">
+          <h2 className="text-lg font-semibold mb-2">开始你的创作之旅</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            选择一个已有作品继续创作，或创建一部新作品开始你的网文之旅
+          </p>
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => setIsCreatingNovel(true)}>
+              <Plus className="size-4 mr-2" />创建新作品
+            </Button>
+            <Button variant="outline" onClick={() => setCurrentView("novels")}>
+              <BookOpen className="size-4 mr-2" />查看作品列表
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }

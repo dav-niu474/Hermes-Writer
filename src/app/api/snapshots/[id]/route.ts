@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized } from "@/lib/db";
 
 // GET /api/snapshots/[id] — get a single snapshot
 export async function GET(
@@ -8,6 +8,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
 
     const snapshot = await db.chapterSnapshot.findUnique({
       where: { id },
@@ -31,6 +32,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    await ensureDbInitialized();
 
     const snapshot = await db.chapterSnapshot.findUnique({ where: { id } });
     if (!snapshot) {
