@@ -18,27 +18,25 @@ Work Log:
 - Designed and implemented Prisma database schema (Novel, Chapter, Character, WorldSetting, AgentTask)
 - Created TypeScript type definitions with agent definitions, status maps, genre options
 - Built Zustand state management store for app-wide state
-- Implemented REST API routes:
-  - /api/novels (GET all, POST create)
-  - /api/novels/[id] (GET, PUT, DELETE)
-  - /api/novels/[id]/chapters (GET all, POST create)
-  - /api/chapters/[id] (GET, PUT, DELETE)
-  - /api/characters (POST create)
-  - /api/agents/generate (POST - AI generation via z-ai-web-dev-sdk)
-- Built UI components:
-  - AppSidebar: Navigation sidebar with Hermes branding
-  - DashboardView: Overview with hero banner, stats, recent novels
-  - NovelsView: Full CRUD with search, create/edit/delete dialogs
-  - WorkspaceView: Three-panel resizable layout with chapter editor, sidebar, AI agent panel
-  - AgentsView: Hermes Agent system documentation with pipeline visualization
-- Integrated LLM SDK for 7 specialized agents (Hermes, Planner, Writer, Editor, Character, WorldBuilder, Reviewer)
-- Implemented dark mode with next-themes
-- Auto-save for chapter content
-- Responsive design with shadcn/ui components
+- Implemented REST API routes for novels, chapters, characters, world-settings, export, agent-tasks
+- Built UI components: AppSidebar, DashboardView, NovelsView, WorkspaceView, AgentsView
+- Integrated NVIDIA NIM LLM service with multi-model support (GLM 4.7, GLM 5, Kimi 2.5)
+- Implemented streaming AI responses for real-time generation
+- Added worldbuilder panel, export (TXT/MD), agent task history, writing statistics
+- Created comprehensive README with architecture docs and 4-phase iteration plan
+- Pushed code to GitHub: https://github.com/dav-niu474/Hermes-Writer.git
+- Deployed to Vercel: https://my-project-ten-xi-94.vercel.app
 
 Stage Summary:
-- Complete AI web novel creation platform built and running
+- Complete AI web novel creation platform built and deployed
 - 7 specialized Hermes Agents for full writing pipeline
-- Full CRUD for novels, chapters, and characters
-- AI-powered writing assistance with context-aware generation
-- Dev server running at http://localhost:3000
+- Multi-model support: GLM 4.7, GLM 5, Kimi 2.5 via NVIDIA NIM
+- Streaming AI generation with abort support
+- Full CRUD for novels, chapters, characters, world settings
+- Export to TXT and Markdown
+- Agent task history tracking
+- Writing statistics dashboard
+- Dark mode support
+- Responsive design
+- GitHub repo: https://github.com/dav-niu474/Hermes-Writer
+- Vercel deployment: https://my-project-ten-xi-94.vercel.app
