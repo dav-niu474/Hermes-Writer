@@ -106,3 +106,44 @@ Stage Summary:
 - DB init endpoint: POST /api/db/init (needs to be called once after deploy)
 - Vercel deployment: hermes-writer-dav-niu474s-projects.vercel.app (production alias)
 - NOTE: Vercel Authentication is enabled on deployment - user needs to disable it in Vercel dashboard or access through the Vercel dashboard to initialize DB
+
+---
+Task ID: 6
+Agent: Main Developer
+Task: Fix sidebar button, AI API, database layer, and add Agent configuration system
+
+Work Log:
+- Fixed sidebar "Create Work" button: added missing `setIsCreatingNovel` to destructuring in app-sidebar.tsx
+- Fixed NVIDIA model IDs: changed from zhipu/* to correct z-ai/* and moonshotai/* formats (z-ai/glm4.7, z-ai/glm5, moonshotai/kimi-k2.5)
+- Installed better-sqlite3 for local SQLite database support
+- Created comprehensive SQLite database module (lib/db-sqlite.ts) with Prisma-compatible API:
+  - 11 tables matching Prisma schema with auto-creation
+  - Model proxy with findMany, findUnique, findFirst, create, update, delete
+  - Include resolver for _count, relations, nested includes
+  - Raw query support ($queryRaw, $executeRawUnsafe)
+- Rewrote lib/db.ts with dual-mode database:
+  - SQLite mode for local development (auto-detected via URL protocol check)
+  - PostgreSQL/Prisma mode for Vercel production (when postgres:// URLs available)
+- Updated db/init route for dual-mode health check
+- Added serverExternalPackages: ["better-sqlite3"] in next.config.ts
+- Disabled Turbopack in dev script (NEXT_DISABLE_TURBOPACK=1) for native module compatibility
+- Built comprehensive Agent configuration system:
+  - New types: AgentSkill, AgentTool, AgentMemory, AgentConfig (in types.ts)
+  - DEFAULT_AGENT_CONFIGS with rich configs for all 7 agents (skills, tools, memory, system prompts, temperature, preferred model)
+  - Agent config state in Zustand store with localStorage persistence
+  - Agent config dialog (agent-config-dialog.tsx) with 5 tabs: Basic Info, Skills, Tools, System Prompt, Memory
+  - Updated agents-view.tsx with clickable cards, config buttons, model badges, skill counts
+  - Updated workspace-view.tsx to use agent config (systemPrompt, temperature, memories) when calling AI API
+  - Updated agents/generate API route to accept optional systemPrompt, temperature, maxTokens, memories
+- Pushed to GitHub: https://github.com/dav-niu474/Hermes-Writer
+- Deployed to Vercel: https://hermes-writer-dav-niu474s-projects.vercel.app (READY)
+
+Stage Summary:
+- Sidebar create button fixed (1-line fix: added setIsCreatingNovel to destructure)
+- Database: dual-mode SQLite (local) / PostgreSQL (Vercel) working
+- AI API: NVIDIA NIM model IDs corrected, tested successfully (GLM 4.7, GLM 5, Kimi 2.5)
+- Agent system: full per-agent configuration with skills, tools, memory, prompts
+- All 7 agents configured with 5-6 skills, 3 tools, detailed system prompts each
+- Agent config persisted in localStorage
+- End-to-end tested: DB health → Create Novel → Create Chapter → AI Generation (all pass)
+- Lint clean, GitHub pushed, Vercel deployed
