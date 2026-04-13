@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -24,16 +24,16 @@ model Novel {
   status      String   @default("draft")
   wordCount   Int      @default(0)
   createdAt   DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt   DateTime @updatedAt
 
-  chapters      Chapter[]
-  characters    Character[]
-  worldSettings WorldSetting[]
-  agentTasks    AgentTask[]
-  specs         NovelSpec[]
+  chapters        Chapter[]
+  characters      Character[]
+  worldSettings   WorldSetting[]
+  agentTasks      AgentTask[]
+  specs           NovelSpec[]
   changeProposals ChangeProposal[]
-  snapshots     ChapterSnapshot[]
-  branches      Branch[]
+  snapshots       ChapterSnapshot[]
+  branches        Branch[]
 }
 
 model Chapter {
@@ -101,31 +101,29 @@ model AgentTask {
 // OpenSpec + SDD Engineering Version Management
 // ============================================================
 
-// Novel Spec — the single source of truth for novel settings
 model NovelSpec {
   id          String   @id @default(cuid())
   novelId     String
-  category    String   @default("outline") // characters, worldbuilding, outline, rules, style
+  category    String   @default("outline")
   title       String
-  content     String   @default("")       // Markdown with Requirements + Scenarios
+  content     String   @default("")
   version     Int      @default(1)
-  status      String   @default("active") // active, archived, superseded
+  status      String   @default("active")
   parentSpecId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  novel       Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
-  specDeltas  SpecDelta[]
+  novel      Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  specDeltas SpecDelta[]
 }
 
-// Spec Delta — tracks what changed between spec versions
 model SpecDelta {
   id          String   @id @default(cuid())
   specId      String
   proposalId  String?
-  operation   String   @default("ADDED") // ADDED, MODIFIED, REMOVED, RENAMED
+  operation   String   @default("ADDED")
   description String   @default("")
-  diffContent String   @default("")       // The actual change content
+  diffContent String   @default("")
   applied     Boolean  @default(false)
   appliedAt   DateTime?
   createdAt   DateTime @default(now())
@@ -134,52 +132,49 @@ model SpecDelta {
   proposal ChangeProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
 }
 
-// Change Proposal — structured change request (SDD core)
 model ChangeProposal {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   novelId     String
-  title       String                    // e.g. "add-chapter-11-20"
-  description String   @default("")    // Why: motivation
-  scope       String   @default("")    // What changes are planned
-  impact      String   @default("")    // Affected specs, chapters, word estimate
-  tasks       String   @default("")    // JSON: TaskItem[] with checklists
-  status      String   @default("draft") // draft, validated, in_progress, completed, archived
+  title       String
+  description String    @default("")
+  scope       String    @default("")
+  impact      String    @default("")
+  tasks       String    @default("")
+  status      String    @default("draft")
   completedAt DateTime?
   archivedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   novel      Novel        @relation(fields: [novelId], references: [id], onDelete: Cascade)
   specDeltas SpecDelta[]
 }
 
-// Chapter Snapshot — pre/post write state for rollback
 model ChapterSnapshot {
   id              String   @id @default(cuid())
   novelId         String
   chapterId       String?
   chapterNumber   Int      @default(0)
-  snapshotType    String   @default("manual") // manual, auto_pre_write, auto_post_write
-  label           String   @default("")      // e.g. "v1.0", "before-chapter-5-rewrite"
-  chapterContent  String   @default("")      // Snapshot of chapter content
-  specSnapshot    String   @default("")      // JSON snapshot of relevant specs
-  metadata        String   @default("")      // JSON: additional context
+  snapshotType    String   @default("manual")
+  label           String   @default("")
+  chapterContent  String   @default("")
+  specSnapshot    String   @default("")
+  metadata        String   @default("")
   createdAt       DateTime @default(now())
 
   novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
 }
 
-// Branch — alternative timeline for experimentation
 model Branch {
-  id          String   @id @default(cuid())
-  novelId     String
-  name        String   @default("main")
-  description String   @default("")
-  parentBranchId String?
-  basedOnSnapshotId String? // Which snapshot this branch was created from
-  status      String   @default("active") // active, merged, abandoned
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(cuid())
+  novelId          String
+  name             String   @default("main")
+  description      String   @default("")
+  parentBranchId   String?
+  basedOnSnapshotId String?
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
 }

@@ -8,6 +8,7 @@ import { DashboardView } from "@/components/platform/dashboard-view";
 import { NovelsView } from "@/components/platform/novels-view";
 import { WorkspaceView } from "@/components/platform/workspace-view";
 import { AgentsView } from "@/components/platform/agents-view";
+import { CreateNovelDialog } from "@/components/platform/create-novel-dialog";
 
 export default function Home() {
   const { currentView } = useAppStore();
@@ -37,6 +38,9 @@ export default function Home() {
           {currentView === "agents" && <AgentsView />}
         </main>
       </SidebarInset>
+
+      {/* Global Create Novel Dialog — accessible from any view */}
+      <CreateNovelDialog />
     </SidebarProvider>
   );
 }

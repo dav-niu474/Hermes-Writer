@@ -55,6 +55,7 @@ import {
   Trash2,
   FileText,
   MoreVertical,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -62,6 +63,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
 
 export function NovelsView() {
   const {
@@ -69,9 +71,10 @@ export function NovelsView() {
     setNovels,
     setCurrentView,
     setSelectedNovel,
-    isCreatingNovel,
     setIsCreatingNovel,
   } = useAppStore();
+
+  const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -87,13 +90,26 @@ export function NovelsView() {
   const loadNovels = useCallback(async () => {
     try {
       const res = await fetch("/api/novels");
-      if (res.ok) setNovels(await res.json());
+      if (res.ok) {
+        setNovels(await res.json());
+      } else {
+        toast({
+          title: "加载失败",
+          description: "无法获取作品列表，请刷新重试",
+          variant: "destructive",
+        });
+      }
     } catch (e) {
       console.error("Failed to load novels:", e);
+      toast({
+        title: "网络错误",
+        description: "无法连接服务器",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
-  }, [setNovels]);
+  }, [setNovels, toast]);
 
   useEffect(() => {
     loadNovels();
@@ -125,46 +141,37 @@ export function NovelsView() {
     setEditingNovel(novel);
   }
 
-  async function handleSubmit() {
-    if (!formTitle.trim()) return;
+  async function handleEditSubmit() {
+    if (!formTitle.trim() || !editingNovel) return;
     setFormSubmitting(true);
 
     try {
-      if (editingNovel) {
-        const res = await fetch(`/api/novels/${editingNovel.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: formTitle,
-            description: formDescription,
-            genre: formGenre,
-          }),
+      const res = await fetch(`/api/novels/${editingNovel.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: formTitle.trim(),
+          description: formDescription.trim(),
+          genre: formGenre,
+        }),
+      });
+      if (res.ok) {
+        toast({
+          title: "保存成功",
+          description: `《${formTitle.trim()}》信息已更新`,
         });
-        if (res.ok) {
-          resetForm();
-          loadNovels();
-        }
+        resetForm();
+        loadNovels();
       } else {
-        const res = await fetch("/api/novels", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: formTitle,
-            description: formDescription,
-            genre: formGenre,
-          }),
-        });
-        if (res.ok) {
-          const novel = await res.json();
-          resetForm();
-          setIsCreatingNovel(false);
-          loadNovels();
-          setSelectedNovel(novel.id);
-          setCurrentView("workspace");
-        }
+        const err = await res.json();
+        throw new Error(err.error || "保存失败");
       }
     } catch (e) {
-      console.error("Failed to save novel:", e);
+      toast({
+        title: "保存失败",
+        description: e instanceof Error ? e.message : "请重试",
+        variant: "destructive",
+      });
     } finally {
       setFormSubmitting(false);
     }
@@ -177,11 +184,21 @@ export function NovelsView() {
         method: "DELETE",
       });
       if (res.ok) {
+        toast({
+          title: "删除成功",
+          description: `《${deletingNovel.title}》已删除`,
+        });
         setDeletingNovel(null);
         loadNovels();
+      } else {
+        throw new Error("删除失败");
       }
     } catch (e) {
-      console.error("Failed to delete novel:", e);
+      toast({
+        title: "删除失败",
+        description: "请重试",
+        variant: "destructive",
+      });
     }
   }
 
@@ -235,9 +252,17 @@ export function NovelsView() {
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
             <BookOpen className="size-12 text-muted-foreground" />
-            <p className="text-muted-foreground">
-              {search ? "没有找到匹配的作品" : "还没有作品，点击上方按钮创建"}
-            </p>
+            <div className="text-center">
+              <p className="text-muted-foreground mb-2">
+                {search ? "没有找到匹配的作品" : "还没有作品"}
+              </p>
+              {!search && (
+                <Button variant="outline" onClick={openCreateDialog}>
+                  <Plus className="size-4 mr-2" />
+                  创建你的第一部作品
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -264,7 +289,11 @@ export function NovelsView() {
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="size-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
                         <MoreVertical className="size-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -328,62 +357,6 @@ export function NovelsView() {
         </div>
       )}
 
-      {/* Create Dialog */}
-      <Dialog open={isCreatingNovel} onOpenChange={(open) => !open && resetForm()}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>创建新作品</DialogTitle>
-            <DialogDescription>
-              填写基本信息开始你的创作之旅
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="title">作品标题 *</Label>
-              <Input
-                id="title"
-                placeholder="输入作品标题"
-                value={formTitle}
-                onChange={(e) => setFormTitle(e.target.value)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="genre">类型</Label>
-              <Select value={formGenre} onValueChange={setFormGenre}>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择类型" />
-                </SelectTrigger>
-                <SelectContent>
-                  {GENRE_OPTIONS.map((g) => (
-                    <SelectItem key={g} value={g}>
-                      {g}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="description">作品简介</Label>
-              <Textarea
-                id="description"
-                placeholder="简要描述你的故事..."
-                value={formDescription}
-                onChange={(e) => setFormDescription(e.target.value)}
-                rows={4}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={resetForm}>
-              取消
-            </Button>
-            <Button onClick={handleSubmit} disabled={!formTitle.trim() || formSubmitting}>
-              {formSubmitting ? "创建中..." : "创建并开始"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Edit Dialog */}
       <Dialog
         open={!!editingNovel}
@@ -433,10 +406,17 @@ export function NovelsView() {
               取消
             </Button>
             <Button
-              onClick={handleSubmit}
+              onClick={handleEditSubmit}
               disabled={!formTitle.trim() || formSubmitting}
             >
-              {formSubmitting ? "保存中..." : "保存"}
+              {formSubmitting ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin" />
+                  保存中...
+                </>
+              ) : (
+                "保存"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
