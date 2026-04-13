@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Novel {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @default("")
+  genre       String   @default("")
+  coverImage  String   @default("")
+  status      String   @default("draft") // draft, writing, completed, published
+  wordCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  chapters      Chapter[]
+  characters    Character[]
+  worldSettings WorldSetting[]
+  agentTasks    AgentTask[]
+}
+
+model Chapter {
+  id          String   @id @default(cuid())
+  novelId     String
+  title       String   @default("")
+  content     String   @default("")
+  summary     String   @default("")
+  chapterNumber Int    @default(1)
+  status      String   @default("draft") // draft, writing, review, completed
+  wordCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  novel      Novel        @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  agentTasks AgentTask[]
+}
+
+model Character {
+  id          String   @id @default(cuid())
+  novelId     String
+  name        String
+  role        String   @default("supporting") // protagonist, antagonist, supporting, minor
+  description String   @default("")
+  personality String   @default("")
+  appearance  String   @default("")
+  backstory   String   @default("")
+  avatarUrl   String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+}
+
+model WorldSetting {
+  id          String   @id @default(cuid())
+  novelId     String
+  name        String
+  category    String   @default("geography") // geography, history, culture, magic, technology, other
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+}
+
+model AgentTask {
+  id          String   @id @default(cuid())
+  novelId     String
+  chapterId   String?
+  agentType   String   // hermes, planner, writer, editor, character, worldbuilder, reviewer
+  status      String   @default("pending") // pending, running, completed, failed
+  input       String   @default("")
+  output      String   @default("")
+  errorMessage String  @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  novel   Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  chapter Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+}
