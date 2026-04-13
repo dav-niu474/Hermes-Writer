@@ -1,12 +1,4 @@
 import { PrismaClient } from '@prisma/client'
-import { Pool, neonConfig } from '@neondatabase/serverless'
-import { PrismaNeon } from '@prisma/adapter-neon'
-import ws from 'ws'
-
-// Required for Neon serverless in Node.js environments
-if (typeof WebSocket === 'undefined') {
-  neonConfig.webSocketConstructor = ws
-}
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -14,7 +6,7 @@ const globalForPrisma = globalThis as unknown as {
 
 /**
  * Get the database URL based on environment.
- * On Vercel, uses the Vercel Postgres (Neon) connection URL.
+ * On Vercel, uses the Vercel Postgres pooled connection URL.
  * Locally, falls back to DATABASE_URL env var.
  */
 function getDatabaseUrl(): string {
@@ -33,37 +25,15 @@ function getDatabaseUrl(): string {
   throw new Error('No database URL configured. Set harmesWriter_POSTGRES_PRISMA_URL or DATABASE_URL.')
 }
 
-/**
- * Detect if we should use the Neon adapter (serverless environments).
- */
-function shouldUseNeonAdapter(): boolean {
-  const url = getDatabaseUrl()
-  // Use Neon adapter if: URL is from Neon, has pgbouncer, or we're on Vercel,
-  // or the @prisma/adapter-neon package is available with a Neon-compatible URL
-  return (
-    url.includes('neon.tech') ||
-    url.includes('pgbouncer') ||
-    process.env.VERCEL === '1'
-  )
-}
-
 function createPrismaClient(): PrismaClient {
   const databaseUrl = getDatabaseUrl()
 
-  if (shouldUseNeonAdapter()) {
-    // Use Neon adapter for serverless / Vercel Postgres
-    const pool = new Pool({ connectionString: databaseUrl })
-    const adapter = new PrismaNeon(pool)
-    return new PrismaClient({
-      adapter,
-      log: process.env.NODE_ENV === 'development' ? ['query'] : [],
-    })
-  }
+  // Connection pool settings for serverless environments
+  const connectionUrl = databaseUrl.includes('?') ? databaseUrl : `${databaseUrl}?connect_timeout=10&pool_timeout=10`
 
-  // Direct connection (local dev with Postgres)
   return new PrismaClient({
-    datasourceUrl: databaseUrl,
-    log: process.env.NODE_ENV === 'development' ? ['query'] : [],
+    datasourceUrl: connectionUrl,
+    log: process.env.NODE_ENV === 'development' ? ['query'] : ['error'],
   })
 }
 
