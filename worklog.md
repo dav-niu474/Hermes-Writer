@@ -76,3 +76,33 @@ Work Log:
 
 Stage Summary:
 - All version management API routes created and ready
+
+---
+Task ID: 5
+Agent: Main Developer
+Task: Fix bugs - Vercel rename, Postgres integration, novel creation UX, API fixes
+
+Work Log:
+- Renamed Vercel project from "my-project" to "hermes-writer" via API
+- Switched Prisma schema from SQLite to PostgreSQL provider
+- Installed @prisma/adapter-neon + @neondatabase/serverless for serverless Postgres
+- Updated db.ts to read harmesWriter_POSTGRES_PRISMA_URL from Vercel env vars at runtime
+- Created /api/db/init endpoint for database schema initialization (CREATE TABLE IF NOT EXISTS)
+- Moved Create Novel Dialog from NovelsView to global page.tsx (accessible from any view)
+- Added toast notifications (success/error) to all CRUD operations (novels, chapters, characters)
+- Improved novel creation UX: Enter key submit, autoFocus, loading states, error feedback
+- Updated NovelsView to remove duplicate create dialog, add edit/delete toasts
+- Updated DashboardView with error handling for API calls
+- Added ws to serverExternalPackages in next.config.ts for Neon adapter
+- Fixed vercel.json to let Vercel auto-detect build commands
+- Added prisma generate to build script for Vercel
+- Deployed to Vercel successfully (3 commits pushed)
+
+Stage Summary:
+- Vercel project: hermes-writer (renamed)
+- Database: Vercel Postgres (Neon) via @prisma/adapter-neon
+- Novel creation now works from Dashboard, Novels page, and empty state
+- Toast notifications on all success/error operations
+- DB init endpoint: POST /api/db/init (needs to be called once after deploy)
+- Vercel deployment: hermes-writer-dav-niu474s-projects.vercel.app (production alias)
+- NOTE: Vercel Authentication is enabled on deployment - user needs to disable it in Vercel dashboard or access through the Vercel dashboard to initialize DB
