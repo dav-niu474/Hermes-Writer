@@ -40,3 +40,39 @@ Stage Summary:
 - Responsive design
 - GitHub repo: https://github.com/dav-niu474/Hermes-Writer
 - Vercel deployment: https://my-project-ten-xi-94.vercel.app
+
+---
+Task ID: 3
+Agent: Research Agent
+Task: Research OpenSpec reference projects for version management design
+
+Work Log:
+- Fetched and analyzed novel-writer-openspec repo: README, PRD, validator source code
+- Fetched and analyzed inkos repo: Chinese README, English README
+- Fetched and analyzed original OpenSpec methodology repo: README
+- Studied spec structures, data models, validation approaches, truth file systems
+- Compiled comprehensive analysis covering 5 dimensions: OpenSpec methodology, SDD paradigm, version management, key features, data models
+
+Stage Summary:
+- novel-writer-openspec: File-based CLI tool using specs/ + changes/ dual-track structure, Requirements + Scenarios format, 5-stage workflow, ADDED/MODIFIED/REMOVED delta management
+- inkos: Full autonomous CLI agent with 10-agent pipeline, 7 truth files (canonical state), JSON delta + Zod validation, SQLite temporal memory, 33-dimension audit, style cloning, input governance control surface
+- OpenSpec original: Lightweight spec layer for AI coding, specs/ (truth) + changes/ (proposals), artifact-guided workflow
+- Key patterns identified for Hermes Writer: spec-based branching, change proposal system, truth file authority, automated validation, state snapshots, input governance
+
+---
+Task ID: 4
+Agent: API Builder
+Task: Build version control API routes
+
+Work Log:
+- Created 8 API route files for specs, proposals, snapshots, branches
+- Each route supports full CRUD operations
+- /api/specs: GET (list by novelId + category filter), POST (create spec); /api/specs/[id]: GET (with deltas), PUT (auto version bump on content change), DELETE
+- /api/proposals: GET (list by novelId + status filter), POST (create proposal); /api/proposals/[id]: GET (with spec deltas), PUT (enforced status transition: draft→validated→in_progress→completed→archived with timestamps), DELETE
+- /api/snapshots: GET (list by novelId + type filter), POST (create with JSON chapterContent + specSnapshot); /api/snapshots/[id]: GET, DELETE
+- /api/branches: GET (list by novelId + status filter), POST (create with duplicate name guard, snapshot/parent validation); /api/branches/[id]: GET, PUT (enforced transition: active→merged/abandoned), DELETE (main branch protected)
+- All routes use NextResponse/NextRequest patterns, async params, proper error handling, input validation
+- Lint passes cleanly, database schema already in sync
+
+Stage Summary:
+- All version management API routes created and ready

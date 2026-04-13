@@ -21,28 +21,33 @@ model Novel {
   description String   @default("")
   genre       String   @default("")
   coverImage  String   @default("")
-  status      String   @default("draft") // draft, writing, completed, published
+  status      String   @default("draft")
   wordCount   Int      @default(0)
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   chapters      Chapter[]
   characters    Character[]
   worldSettings WorldSetting[]
   agentTasks    AgentTask[]
+  specs         NovelSpec[]
+  changeProposals ChangeProposal[]
+  snapshots     ChapterSnapshot[]
+  branches      Branch[]
 }
 
 model Chapter {
-  id          String   @id @default(cuid())
-  novelId     String
-  title       String   @default("")
-  content     String   @default("")
-  summary     String   @default("")
-  chapterNumber Int    @default(1)
-  status      String   @default("draft") // draft, writing, review, completed
-  wordCount   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  novelId       String
+  title         String   @default("")
+  content       String   @default("")
+  summary       String   @default("")
+  chapterNumber Int      @default(1)
+  status        String   @default("draft")
+  wordCount     Int      @default(0)
+  branchId      String   @default("main")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   novel      Novel        @relation(fields: [novelId], references: [id], onDelete: Cascade)
   agentTasks AgentTask[]
@@ -52,7 +57,7 @@ model Character {
   id          String   @id @default(cuid())
   novelId     String
   name        String
-  role        String   @default("supporting") // protagonist, antagonist, supporting, minor
+  role        String   @default("supporting")
   description String   @default("")
   personality String   @default("")
   appearance  String   @default("")
@@ -68,7 +73,7 @@ model WorldSetting {
   id          String   @id @default(cuid())
   novelId     String
   name        String
-  category    String   @default("geography") // geography, history, culture, magic, technology, other
+  category    String   @default("geography")
   description String   @default("")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -77,17 +82,104 @@ model WorldSetting {
 }
 
 model AgentTask {
-  id          String   @id @default(cuid())
-  novelId     String
-  chapterId   String?
-  agentType   String   // hermes, planner, writer, editor, character, worldbuilder, reviewer
-  status      String   @default("pending") // pending, running, completed, failed
-  input       String   @default("")
-  output      String   @default("")
-  errorMessage String  @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  novelId      String
+  chapterId    String?
+  agentType    String
+  status       String   @default("pending")
+  input        String   @default("")
+  output       String   @default("")
+  errorMessage String   @default("")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   novel   Novel    @relation(fields: [novelId], references: [id], onDelete: Cascade)
   chapter Chapter? @relation(fields: [chapterId], references: [id], onDelete: SetNull)
+}
+
+// ============================================================
+// OpenSpec + SDD Engineering Version Management
+// ============================================================
+
+// Novel Spec — the single source of truth for novel settings
+model NovelSpec {
+  id          String   @id @default(cuid())
+  novelId     String
+  category    String   @default("outline") // characters, worldbuilding, outline, rules, style
+  title       String
+  content     String   @default("")       // Markdown with Requirements + Scenarios
+  version     Int      @default(1)
+  status      String   @default("active") // active, archived, superseded
+  parentSpecId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  novel       Novel           @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  specDeltas  SpecDelta[]
+}
+
+// Spec Delta — tracks what changed between spec versions
+model SpecDelta {
+  id          String   @id @default(cuid())
+  specId      String
+  proposalId  String?
+  operation   String   @default("ADDED") // ADDED, MODIFIED, REMOVED, RENAMED
+  description String   @default("")
+  diffContent String   @default("")       // The actual change content
+  applied     Boolean  @default(false)
+  appliedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  spec     NovelSpec      @relation(fields: [specId], references: [id], onDelete: Cascade)
+  proposal ChangeProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+}
+
+// Change Proposal — structured change request (SDD core)
+model ChangeProposal {
+  id          String   @id @default(cuid())
+  novelId     String
+  title       String                    // e.g. "add-chapter-11-20"
+  description String   @default("")    // Why: motivation
+  scope       String   @default("")    // What changes are planned
+  impact      String   @default("")    // Affected specs, chapters, word estimate
+  tasks       String   @default("")    // JSON: TaskItem[] with checklists
+  status      String   @default("draft") // draft, validated, in_progress, completed, archived
+  completedAt DateTime?
+  archivedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  novel      Novel        @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  specDeltas SpecDelta[]
+}
+
+// Chapter Snapshot — pre/post write state for rollback
+model ChapterSnapshot {
+  id              String   @id @default(cuid())
+  novelId         String
+  chapterId       String?
+  chapterNumber   Int      @default(0)
+  snapshotType    String   @default("manual") // manual, auto_pre_write, auto_post_write
+  label           String   @default("")      // e.g. "v1.0", "before-chapter-5-rewrite"
+  chapterContent  String   @default("")      // Snapshot of chapter content
+  specSnapshot    String   @default("")      // JSON snapshot of relevant specs
+  metadata        String   @default("")      // JSON: additional context
+  createdAt       DateTime @default(now())
+
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
+}
+
+// Branch — alternative timeline for experimentation
+model Branch {
+  id          String   @id @default(cuid())
+  novelId     String
+  name        String   @default("main")
+  description String   @default("")
+  parentBranchId String?
+  basedOnSnapshotId String? // Which snapshot this branch was created from
+  status      String   @default("active") // active, merged, abandoned
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  novel Novel @relation(fields: [novelId], references: [id], onDelete: Cascade)
 }

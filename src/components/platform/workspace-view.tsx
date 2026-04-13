@@ -53,6 +53,7 @@ import {
   Plus,
   Trash2,
   Bot,
+  GitBranch,
   Send,
   Loader2,
   Sparkles,
@@ -74,6 +75,7 @@ import {
   Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { VersionPanel } from "@/components/platform/version-panel";
 
 export function WorkspaceView() {
   const {
@@ -114,7 +116,7 @@ export function WorkspaceView() {
   const [showStatsPanel, setShowStatsPanel] = useState(false);
   const [charForm, setCharForm] = useState({ name: "", role: "supporting" as const, description: "", personality: "", appearance: "", backstory: "" });
   const [worldForm, setWorldForm] = useState({ name: "", category: "geography" as WorldSettingCategory, description: "" });
-  const [leftTab, setLeftTab] = useState<"chapters" | "characters" | "worldview">("chapters");
+  const [leftTab, setLeftTab] = useState<"chapters" | "characters" | "worldview" | "version">("chapters");
   const [agentTasks, setAgentTasks] = useState<any[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const aiEndRef = useRef<HTMLDivElement>(null);
@@ -473,13 +475,13 @@ export function WorkspaceView() {
         <ResizablePanel defaultSize={18} minSize={14} maxSize={28}>
           <div className="flex flex-col h-full border-r">
             <div className="flex border-b flex-shrink-0">
-              {(["chapters", "characters", "worldview"] as const).map((tab) => (
+              {(["chapters", "characters", "worldview", "version"] as const).map((tab) => (
                 <button
                   key={tab}
                   className={cn("flex-1 px-2 py-2 text-[11px] font-medium transition-colors", leftTab === tab ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground")}
                   onClick={() => setLeftTab(tab)}
                 >
-                  {tab === "chapters" ? "章节" : tab === "characters" ? "角色" : "世界"}
+                  {tab === "chapters" ? "章节" : tab === "characters" ? "角色" : tab === "worldview" ? "世界" : "版本"}
                 </button>
               ))}
             </div>
@@ -523,7 +525,7 @@ export function WorkspaceView() {
               )}
 
               {leftTab === "worldview" && (
-                <div className="p-1.5 space-y-1">
+                <div className="p-1.5 space-y-1" key="worldview-content">
                   {(worldSettings || []).map((ws: WorldSetting) => (
                     <div key={ws.id} className="group rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer transition-colors" onClick={() => { setSelectedAgent("worldbuilder"); setShowAgentPanel(true); setAiMessage(`完善「${ws.name}」的设定：${ws.description}`); }}>
                       <div className="flex items-center justify-between">
@@ -541,6 +543,10 @@ export function WorkspaceView() {
                     <Plus className="size-3 mr-1" />添加设定
                   </Button>
                 </div>
+              )}
+
+              {leftTab === "version" && (
+                <VersionPanel />
               )}
             </ScrollArea>
           </div>
