@@ -55,4 +55,4 @@ server.log
 
 # Database files
 /db/*.db
-/db/*.db-journal
+/db/*.db-journaldb/

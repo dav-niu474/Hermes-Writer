@@ -1,15 +1,31 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { db, ensureDbInitialized, isPostgresAvailable } from "@/lib/db";
 
 /**
  * POST /api/db/init
- * Initializes the database schema. Call this once after first deployment.
+ * Initializes the database schema. For SQLite, tables are auto-created.
+ * For PostgreSQL, runs CREATE TABLE IF NOT EXISTS statements.
  */
 export async function POST() {
   try {
     const results: string[] = [];
 
-    // Create all tables using raw SQL
+    if (!isPostgresAvailable) {
+      // SQLite mode: tables are already created in createSqliteDb()
+      // Just verify connectivity
+      await db.$queryRaw`SELECT 1`;
+      results.push("✓ SQLite database ready (tables auto-created on startup)");
+      return NextResponse.json({
+        success: true,
+        mode: "sqlite",
+        message: "SQLite database ready — tables are auto-created",
+        details: results,
+      });
+    }
+
+    // PostgreSQL mode: run CREATE TABLE statements
+    await ensureDbInitialized();
+
     const statements = [
       `CREATE TABLE IF NOT EXISTS "User" (
         "id" TEXT NOT NULL,
@@ -187,13 +203,14 @@ export async function POST() {
         const tableName = sql.match(/"(\w+)"/)?.[1] || sql.slice(0, 30);
         results.push(`✓ ${tableName}`);
       } catch (err: any) {
-        results.push(`✗ ${err.message?.slice(0, 80) || 'error'}`);
+        results.push(`✗ ${err.message?.slice(0, 80) || "error"}`);
       }
     }
 
     return NextResponse.json({
       success: true,
-      message: "Database schema initialized successfully",
+      mode: "postgresql",
+      message: "PostgreSQL database schema initialized successfully",
       details: results,
     });
   } catch (error) {
@@ -214,7 +231,11 @@ export async function POST() {
 export async function GET() {
   try {
     await db.$queryRaw`SELECT 1`;
-    return NextResponse.json({ status: "ok", database: "connected" });
+    return NextResponse.json({
+      status: "ok",
+      database: "connected",
+      mode: isPostgresAvailable ? "postgresql" : "sqlite",
+    });
   } catch (error) {
     return NextResponse.json(
       {

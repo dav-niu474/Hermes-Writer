@@ -36,7 +36,7 @@ const navItems: { view: ViewType; label: string; icon: React.ReactNode }[] = [
 ];
 
 export function AppSidebar() {
-  const { currentView, setCurrentView, selectedNovel, isAgentRunning } = useAppStore();
+  const { currentView, setCurrentView, selectedNovel, isAgentRunning, setIsCreatingNovel } = useAppStore();
 
   return (
     <Sidebar variant="inset" collapsible="icon">

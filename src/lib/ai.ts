@@ -63,9 +63,9 @@ function getApiKey(): string {
 
 function getNVIDIAModelId(modelId?: string): string {
   const modelMap: Record<string, string> = {
-    "glm-4-7": "zhipu/glm-4-7",
-    "glm-5": "zhipu/glm-5",
-    "kimi-2.5": "moonshotai/kimi-k2",
+    "glm-4-7": "z-ai/glm4.7",
+    "glm-5": "z-ai/glm5",
+    "kimi-2.5": "moonshotai/kimi-k2.5",
   };
   return modelMap[modelId || DEFAULT_MODEL] || modelMap[DEFAULT_MODEL];
 }

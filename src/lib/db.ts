@@ -1,60 +1,85 @@
-import { PrismaClient } from '@prisma/client'
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-}
-
-/**
- * Get the database URL based on environment.
- * On Vercel, uses the Vercel Postgres pooled connection URL.
- * Locally, falls back to DATABASE_URL env var.
- */
-function getDatabaseUrl(): string {
-  // Vercel Postgres env vars (auto-set by Vercel Postgres store)
-  const vercelPrismaUrl = process.env.harmesWriter_POSTGRES_PRISMA_URL
-  if (vercelPrismaUrl) return vercelPrismaUrl
-
-  const vercelUrl = process.env.POSTGRES_PRISMA_URL
-  if (vercelUrl) return vercelUrl
-
-  // Standard DATABASE_URL
-  const standardUrl = process.env.DATABASE_URL
-  if (standardUrl) return standardUrl
-
-  // Should never reach here on Vercel
-  throw new Error('No database URL configured. Set harmesWriter_POSTGRES_PRISMA_URL or DATABASE_URL.')
-}
-
-function createPrismaClient(): PrismaClient {
-  const databaseUrl = getDatabaseUrl()
-
-  // Connection pool settings for serverless environments
-  const connectionUrl = databaseUrl.includes('?') ? databaseUrl : `${databaseUrl}?connect_timeout=10&pool_timeout=10`
-
-  return new PrismaClient({
-    datasourceUrl: connectionUrl,
-    log: process.env.NODE_ENV === 'development' ? ['query'] : ['error'],
-  })
-}
-
-export const db = globalForPrisma.prisma ?? createPrismaClient()
-
-// In development, reuse the client to avoid exhausting connections
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+import { createSqliteDb } from "./db-sqlite";
+import { PrismaClient } from "@prisma/client";
 
 // ============================================================
-// Auto-initialization: ensure all required tables exist
+// Environment detection
 // ============================================================
 
-let dbInitialized = false
-let initPromise: Promise<void> | null = null
+function isPostgresUrl(url: string): boolean {
+  return url.startsWith("postgresql://") || url.startsWith("postgres://");
+}
+
+export const isPostgresAvailable = !!(
+  process.env.POSTGRES_PRISMA_URL ||
+  process.env.harmesWriter_POSTGRES_PRISMA_URL ||
+  (process.env.DATABASE_URL && isPostgresUrl(process.env.DATABASE_URL) && !process.env.DATABASE_URL.includes("dummy"))
+);
+
+// ============================================================
+// SQLite path
+// ============================================================
+
+let db: any;
+
+if (isPostgresAvailable) {
+  // ── Production (Vercel / PostgreSQL) ──────────────────────
+  const globalForPrisma = globalThis as unknown as {
+    prisma: PrismaClient | undefined;
+  };
+
+  function getDatabaseUrl(): string {
+    const vercelPrismaUrl = process.env.harmesWriter_POSTGRES_PRISMA_URL;
+    if (vercelPrismaUrl) return vercelPrismaUrl;
+
+    const vercelUrl = process.env.POSTGRES_PRISMA_URL;
+    if (vercelUrl) return vercelUrl;
+
+    const standardUrl = process.env.DATABASE_URL;
+    if (standardUrl) return standardUrl;
+
+    throw new Error(
+      "No database URL configured. Set harmesWriter_POSTGRES_PRISMA_URL or DATABASE_URL."
+    );
+  }
+
+  function createPrismaClient(): PrismaClient {
+    const databaseUrl = getDatabaseUrl();
+    const connectionUrl = databaseUrl.includes("?")
+      ? databaseUrl
+      : `${databaseUrl}?connect_timeout=10&pool_timeout=10`;
+
+    return new PrismaClient({
+      datasourceUrl: connectionUrl,
+      log: process.env.NODE_ENV === "development" ? ["query"] : ["error"],
+    });
+  }
+
+  db = globalForPrisma.prisma ?? createPrismaClient();
+  if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+
+  console.log("[db] Using Prisma + PostgreSQL");
+} else {
+  // ── Local development (SQLite) ───────────────────────────
+  db = createSqliteDb();
+  console.log("[db] Using SQLite (local development)");
+}
+
+export { db };
+
+// ============================================================
+// ensureDbInitialized
+// ============================================================
+
+let dbInitialized = false;
+let initPromise: Promise<void> | null = null;
 
 /**
  * All CREATE TABLE IF NOT EXISTS statements matching the Prisma schema.
+ * Only used in PostgreSQL mode (SQLite tables are auto-created).
  * These are safe to re-run — IF NOT EXISTS and DO $$ ... EXCEPTION blocks
  * ensure idempotency.
  */
-const SCHEMA_INIT_STATEMENTS = [
+const PG_SCHEMA_INIT_STATEMENTS = [
   // User
   `CREATE TABLE IF NOT EXISTS "User" (
     "id" TEXT NOT NULL,
@@ -234,64 +259,60 @@ const SCHEMA_INIT_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "ChangeProposal_novelId_idx" ON "ChangeProposal"("novelId")`,
   `CREATE INDEX IF NOT EXISTS "ChapterSnapshot_novelId_idx" ON "ChapterSnapshot"("novelId")`,
   `CREATE INDEX IF NOT EXISTS "Branch_novelId_idx" ON "Branch"("novelId")`,
-]
-
-/**
- * Run CREATE TABLE IF NOT EXISTS statements directly against the database.
- * Safe to call multiple times — all statements are idempotent.
- */
-async function initDatabaseSchema(): Promise<void> {
-  console.log('[db] Initializing database schema...')
-  for (const sql of SCHEMA_INIT_STATEMENTS) {
-    try {
-      await db.$executeRawUnsafe(sql)
-    } catch (err: any) {
-      // Log but don't throw — some constraints might race, that's fine
-      console.warn(`[db] Schema statement warning: ${err.message?.slice(0, 100) || 'unknown'}`)
-    }
-  }
-  console.log('[db] Database schema initialized successfully')
-}
+];
 
 /**
  * Ensures all required database tables exist before any API operation.
- * This is safe to call on every request — after the first successful check,
- * it short-circuits via the `dbInitialized` flag.
+ * - SQLite: tables are auto-created in `createSqliteDb()`, so this is a no-op.
+ * - PostgreSQL: runs the full schema init SQL against the database.
  *
- * Call this at the top of every API route that reads/writes to the database.
+ * Safe to call on every request — after the first successful check,
+ * it short-circuits via the `dbInitialized` flag.
  */
 export async function ensureDbInitialized(): Promise<void> {
-  // Fast path: already confirmed
-  if (dbInitialized) return
+  if (dbInitialized) return;
 
-  // Deduplicate concurrent calls
+  if (!isPostgresAvailable) {
+    // SQLite mode: tables are created on init, just mark as done
+    dbInitialized = true;
+    return;
+  }
+
+  // PostgreSQL mode: check and init
   if (initPromise) {
-    await initPromise
-    return
+    await initPromise;
+    return;
   }
 
   initPromise = (async () => {
     try {
       // Quick check: does the Novel table exist?
-      await db.$queryRaw`SELECT 1 FROM "Novel" LIMIT 0`
-      dbInitialized = true
-      console.log('[db] Database tables verified')
+      await db.$queryRaw`SELECT 1 FROM "Novel" LIMIT 0`;
+      dbInitialized = true;
+      console.log("[db] PostgreSQL tables verified");
     } catch {
       // Table doesn't exist — create the full schema
-      console.log('[db] Novel table not found, initializing schema...')
-      await initDatabaseSchema()
-      dbInitialized = true
+      console.log("[db] Novel table not found, initializing PostgreSQL schema...");
+      for (const sql of PG_SCHEMA_INIT_STATEMENTS) {
+        try {
+          await db.$executeRawUnsafe(sql);
+        } catch (err: any) {
+          console.warn(
+            `[db] Schema statement warning: ${err.message?.slice(0, 100) || "unknown"}`
+          );
+        }
+      }
+      dbInitialized = true;
+      console.log("[db] PostgreSQL schema initialized successfully");
     }
-  })()
+  })();
 
   try {
-    await initPromise
+    await initPromise;
   } catch (err) {
-    // Even if init fails, mark as initialized to prevent infinite retries.
-    // The actual API calls will return proper 500 errors.
-    console.error('[db] Database initialization failed (non-fatal):', err)
-    dbInitialized = true
+    console.error("[db] Database initialization failed (non-fatal):", err);
+    dbInitialized = true;
   } finally {
-    initPromise = null
+    initPromise = null;
   }
 }

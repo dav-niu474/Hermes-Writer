@@ -69,6 +69,9 @@ const AGENT_SYSTEM_PROMPTS: Record<AgentType, string> = {
 ...`,
 };
 
+const DEFAULT_TEMPERATURE = 0.7;
+const DEFAULT_MAX_TOKENS = 4096;
+
 function buildContextPrompt(
   agentType: AgentType,
   novelInfo: {
@@ -78,7 +81,8 @@ function buildContextPrompt(
     chapterContent?: string;
     characters?: string[];
   },
-  userMessage: string
+  userMessage: string,
+  memories?: string[]
 ): string {
   let context = "";
 
@@ -88,10 +92,19 @@ function buildContextPrompt(
   if (novelInfo.characters?.length) context += `\n主要角色：\n${novelInfo.characters.join("\n")}\n`;
   if (novelInfo.chapterContent) context += `\n当前章节内容：\n${novelInfo.chapterContent}\n`;
 
+  // Include agent memories if provided
+  if (memories && memories.length > 0) {
+    context += `\n--- Agent 记忆 ---\n`;
+    for (const mem of memories) {
+      context += `- ${mem}\n`;
+    }
+    context += `--- 记忆结束 ---\n`;
+  }
+
   return `${context}\n\n用户指令：${userMessage}`;
 }
 
-// POST /api/agents/generate — Non-streaming generation
+// POST /api/agents/generate — Generation with optional streaming
 export async function POST(request: Request) {
   try {
     await ensureDbInitialized();
@@ -109,6 +122,10 @@ export async function POST(request: Request) {
       characters,
       model,
       stream = false,
+      systemPrompt: clientSystemPrompt,
+      temperature: clientTemperature,
+      maxTokens: clientMaxTokens,
+      memories,
     } = body;
 
     if (!agentType || !message) {
@@ -126,7 +143,11 @@ export async function POST(request: Request) {
       },
     });
 
-    const systemPrompt = AGENT_SYSTEM_PROMPTS[agentType as AgentType] || AGENT_SYSTEM_PROMPTS.hermes;
+    // Use client-sent systemPrompt or fall back to defaults
+    const systemPrompt = clientSystemPrompt || AGENT_SYSTEM_PROMPTS[agentType as AgentType] || AGENT_SYSTEM_PROMPTS.hermes;
+    const temperature = clientTemperature ?? DEFAULT_TEMPERATURE;
+    const maxTokens = clientMaxTokens ?? DEFAULT_MAX_TOKENS;
+
     const contextPrompt = buildContextPrompt(
       agentType as AgentType,
       {
@@ -136,7 +157,8 @@ export async function POST(request: Request) {
         chapterContent,
         characters,
       },
-      message
+      message,
+      memories
     );
 
     const messages = [
@@ -144,10 +166,12 @@ export async function POST(request: Request) {
       { role: "user" as const, content: contextPrompt },
     ];
 
+    const genOptions = { model, temperature, maxTokens };
+
     // Streaming mode
     if (stream) {
       try {
-        const streamBody = await generateChatStream(messages, { model });
+        const streamBody = await generateChatStream(messages, genOptions);
         const transformer = createStreamTransformer();
         const readableStream = streamBody.pipeThrough(transformer);
 
@@ -222,7 +246,7 @@ export async function POST(request: Request) {
 
     // Non-streaming mode
     try {
-      const output = await generateChat(messages, { model });
+      const output = await generateChat(messages, genOptions);
 
       await db.agentTask.update({
         where: { id: agentTask.id },

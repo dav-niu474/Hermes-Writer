@@ -12,6 +12,7 @@ import {
   type AgentType,
   type WorldSettingCategory,
 } from "@/lib/types";
+import { DEFAULT_AGENT_CONFIGS } from "@/lib/types";
 import { AVAILABLE_MODELS } from "@/lib/ai";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -95,6 +96,7 @@ export function WorkspaceView() {
     setIsAgentRunning,
     setIsCreatingNovel,
     setCurrentView,
+    agentConfigs,
   } = useAppStore();
 
   const [loading, setLoading] = useState(true);
@@ -297,6 +299,15 @@ export function WorkspaceView() {
     abortControllerRef.current = new AbortController();
 
     try {
+      // Build effective system prompt from agent config
+      const agentConfig = agentConfigs[selectedAgent];
+      const effectiveSystemPrompt = agentConfig
+        ? agentConfig.systemPrompt + agentConfig.skills.filter((s) => s.enabled).map((s) => s.prompt).join("")
+        : undefined;
+      const temperature = agentConfig?.temperature;
+      const maxTokens = agentConfig?.maxTokens;
+      const memories = agentConfig?.memories?.map((m) => m.content).filter(Boolean);
+
       const res = await fetch("/api/agents/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -312,6 +323,10 @@ export function WorkspaceView() {
           characters: characters.map((c) => `${c.name}(${c.role}): ${c.description}`),
           model: selectedModel,
           stream: true,
+          systemPrompt: effectiveSystemPrompt,
+          temperature,
+          maxTokens,
+          memories,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -646,9 +661,16 @@ export function WorkspaceView() {
                         <Sparkles className="size-7 text-amber-400 mx-auto mb-2" />
                         <p className="text-xs text-muted-foreground mb-0.5">{AGENT_DEFINITIONS.find((a) => a.type === selectedAgent)?.name}</p>
                         <p className="text-[10px] text-muted-foreground max-w-[200px] mx-auto">{AGENT_DEFINITIONS.find((a) => a.type === selectedAgent)?.description}</p>
-                        <div className="flex items-center gap-1 justify-center mt-2">
-                          <Badge variant="outline" className="text-[9px]">{AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.name}</Badge>
-                        </div>
+                        {agentConfigs[selectedAgent] && (
+                          <div className="flex items-center gap-1 justify-center mt-2 flex-wrap">
+                            <Badge variant="outline" className="text-[9px]">{AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.name}</Badge>
+                            {agentConfigs[selectedAgent].skills.filter((s) => s.enabled).map((s) => (
+                              <Badge key={s.id} variant="secondary" className="text-[9px]">
+                                {s.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                     {aiMessages.map((msg, i) => (

@@ -1,5 +1,37 @@
 import { create } from "zustand";
-import type { Novel, Chapter, Character, WorldSetting, AgentTask, ViewType } from "./types";
+import type { Novel, Chapter, Character, WorldSetting, AgentTask, ViewType, AgentConfig, AgentType } from "./types";
+import { DEFAULT_AGENT_CONFIGS } from "./types";
+
+// Load agent configs from localStorage
+function loadAgentConfigs(): Record<string, AgentConfig> {
+  if (typeof window === "undefined") return {} as Record<string, AgentConfig>;
+  try {
+    const saved = localStorage.getItem("hermes-agent-configs");
+    if (saved) {
+      const parsed = JSON.parse(saved) as Record<string, AgentConfig>;
+      // Merge with defaults to ensure new fields are present
+      const merged: Record<string, AgentConfig> = { ...DEFAULT_AGENT_CONFIGS };
+      for (const key of Object.keys(parsed) as AgentType[]) {
+        if (merged[key] && parsed[key]) {
+          merged[key] = { ...merged[key], ...parsed[key] };
+        }
+      }
+      return merged;
+    }
+  } catch (e) {
+    console.error("Failed to load agent configs:", e);
+  }
+  return { ...DEFAULT_AGENT_CONFIGS };
+}
+
+function saveAgentConfigs(configs: Record<string, AgentConfig>) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem("hermes-agent-configs", JSON.stringify(configs));
+  } catch (e) {
+    console.error("Failed to save agent configs:", e);
+  }
+}
 
 interface AppState {
   // Navigation
@@ -35,9 +67,15 @@ interface AppState {
   setActiveAgentPanel: (agent: string | null) => void;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
+
+  // Agent Configuration
+  agentConfigs: Record<string, AgentConfig>;
+  _setAgentConfigsInternal: (configs: Record<string, AgentConfig>) => void;
+  setAgentConfig: (type: string, config: AgentConfig) => void;
+  updateAgentConfig: (type: string, updates: Partial<AgentConfig>) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   // Navigation
   currentView: "dashboard",
   setCurrentView: (view) => set({ currentView: view }),
@@ -58,7 +96,7 @@ export const useAppStore = create<AppState>((set) => ({
   characters: [],
   setCharacters: (characters) => set({ characters }),
   worldSettings: [],
-  setWorldSettings: (settings) => set({ worldSettings }),
+  setWorldSettings: (settings) => set({ worldSettings: settings }),
   agentTasks: [],
   setAgentTasks: (tasks) => set({ agentTasks: tasks }),
 
@@ -71,4 +109,21 @@ export const useAppStore = create<AppState>((set) => ({
   setActiveAgentPanel: (agent) => set({ activeAgentPanel: agent }),
   sidebarOpen: true,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+  // Agent Configuration - initialize from localStorage or defaults
+  agentConfigs: { ...DEFAULT_AGENT_CONFIGS },
+  _setAgentConfigsInternal: (configs) => set({ agentConfigs: configs }),
+  setAgentConfig: (type, config) => {
+    const newConfigs = { ...get().agentConfigs, [type]: config };
+    set({ agentConfigs: newConfigs });
+    saveAgentConfigs(newConfigs);
+  },
+  updateAgentConfig: (type, updates) => {
+    const current = get().agentConfigs[type];
+    if (!current) return;
+    const newConfig = { ...current, ...updates };
+    const newConfigs = { ...get().agentConfigs, [type]: newConfig };
+    set({ agentConfigs: newConfigs });
+    saveAgentConfigs(newConfigs);
+  },
 }));
