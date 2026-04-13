@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
 import { db } from "@/lib/db";
+import { generateChat, generateChatStream, createStreamTransformer } from "@/lib/ai";
 import type { AgentType } from "@/lib/types";
 
 const AGENT_SYSTEM_PROMPTS: Record<AgentType, string> = {
@@ -25,7 +25,7 @@ const AGENT_SYSTEM_PROMPTS: Record<AgentType, string> = {
 3. 情感的细腻表达
 4. 紧凑的情节推进
 5. 符合网文风格的文字
-请根据提供的大纲和上下文，撰写高质量的章节内容。注意保持与已有内容的一致性。`,
+请根据提供的大纲和上下文，撰写高质量的章节内容。注意保持与已有内容的一致性。直接输出小说正文内容，不要加额外注释。`,
 
   editor: `你是一位专业的文字编辑，擅长：
 1. 文字润色和优化
@@ -56,17 +56,32 @@ const AGENT_SYSTEM_PROMPTS: Record<AgentType, string> = {
 2. 发现逻辑漏洞和不合理之处
 3. 评估读者体验
 4. 提供改进建议
-5. 给出质量评分
-请对提供的内容进行全面评审，给出详细的评价和建议。`,
+5. 给出质量评分（1-10分）
+请对提供的内容进行全面评审，给出详细的评价和建议。使用以下格式：
+## 总体评分：X/10
+## 优点
+- ...
+## 不足
+- ...
+## 改进建议
+- ...
+## 详细分析
+...`,
 };
 
-async function getZAI() {
-  return await ZAI.create();
-}
-
-function buildContextPrompt(agentType: AgentType, novelInfo: { title?: string; genre?: string; description?: string; chapterContent?: string; characters?: string[] }, userMessage: string): string {
+function buildContextPrompt(
+  agentType: AgentType,
+  novelInfo: {
+    title?: string;
+    genre?: string;
+    description?: string;
+    chapterContent?: string;
+    characters?: string[];
+  },
+  userMessage: string
+): string {
   let context = "";
-  
+
   if (novelInfo.title) context += `小说标题：《${novelInfo.title}》\n`;
   if (novelInfo.genre) context += `类型：${novelInfo.genre}\n`;
   if (novelInfo.description) context += `简介：${novelInfo.description}\n`;
@@ -76,6 +91,7 @@ function buildContextPrompt(agentType: AgentType, novelInfo: { title?: string; g
   return `${context}\n\n用户指令：${userMessage}`;
 }
 
+// POST /api/agents/generate — Non-streaming generation
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -89,6 +105,8 @@ export async function POST(request: Request) {
       novelDescription,
       chapterContent,
       characters,
+      model,
+      stream = false,
     } = body;
 
     if (!agentType || !message) {
@@ -106,32 +124,104 @@ export async function POST(request: Request) {
       },
     });
 
+    const systemPrompt = AGENT_SYSTEM_PROMPTS[agentType as AgentType] || AGENT_SYSTEM_PROMPTS.hermes;
+    const contextPrompt = buildContextPrompt(
+      agentType as AgentType,
+      {
+        title: novelTitle,
+        genre: novelGenre,
+        description: novelDescription,
+        chapterContent,
+        characters,
+      },
+      message
+    );
+
+    const messages = [
+      { role: "system" as const, content: systemPrompt },
+      { role: "user" as const, content: contextPrompt },
+    ];
+
+    // Streaming mode
+    if (stream) {
+      try {
+        const streamBody = await generateChatStream(messages, { model });
+        const transformer = createStreamTransformer();
+        const readableStream = streamBody.pipeThrough(transformer);
+
+        // Collect full output in background for task record
+        let fullOutput = "";
+        const reader = readableStream.getReader();
+        const chunks: string[] = [];
+
+        // We need to create a new stream since we can't both read and pipe
+        const collectedStream = new ReadableStream<string>({
+          async start(controller) {
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                fullOutput += value;
+                chunks.push(value);
+                controller.enqueue(value);
+              }
+              controller.close();
+
+              // Update task record
+              await db.agentTask.update({
+                where: { id: agentTask.id },
+                data: { status: "completed", output: fullOutput },
+              });
+            } catch (err) {
+              const errorMsg = err instanceof Error ? err.message : "Stream error";
+              await db.agentTask.update({
+                where: { id: agentTask.id },
+                data: { status: "failed", errorMessage: errorMsg },
+              });
+              controller.error(err);
+            }
+          },
+        });
+
+        // Convert string stream to Uint8Array stream
+        const encoder = new TextEncoder();
+        const byteStream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            const textReader = collectedStream.getReader();
+            try {
+              while (true) {
+                const { done, value } = await textReader.read();
+                if (done) break;
+                controller.enqueue(encoder.encode(value));
+              }
+              controller.close();
+            } catch (err) {
+              controller.error(err);
+            }
+          },
+        });
+
+        return new Response(byteStream, {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
+          },
+        });
+      } catch (aiError) {
+        const errorMsg = aiError instanceof Error ? aiError.message : "Unknown error";
+        await db.agentTask.update({
+          where: { id: agentTask.id },
+          data: { status: "failed", errorMessage: errorMsg },
+        });
+        return NextResponse.json({ taskId: agentTask.id, status: "failed", error: errorMsg }, { status: 500 });
+      }
+    }
+
+    // Non-streaming mode
     try {
-      const zai = await getZAI();
-      const systemPrompt = AGENT_SYSTEM_PROMPTS[agentType as AgentType] || AGENT_SYSTEM_PROMPTS.hermes;
-      const contextPrompt = buildContextPrompt(
-        agentType as AgentType,
-        {
-          title: novelTitle,
-          genre: novelGenre,
-          description: novelDescription,
-          chapterContent,
-          characters,
-        },
-        message
-      );
+      const output = await generateChat(messages, { model });
 
-      const completion = await zai.chat.completions.create({
-        messages: [
-          { role: "assistant", content: systemPrompt },
-          { role: "user", content: contextPrompt },
-        ],
-        thinking: { type: "disabled" },
-      });
-
-      const output = completion.choices[0]?.message?.content || "抱歉，生成失败，请重试。";
-
-      // Update task record
       await db.agentTask.update({
         where: { id: agentTask.id },
         data: { status: "completed", output },
@@ -142,22 +232,15 @@ export async function POST(request: Request) {
         agentType,
         status: "completed",
         output,
+        model: model || "glm-4-7",
       });
     } catch (aiError) {
       const errorMsg = aiError instanceof Error ? aiError.message : "Unknown error";
-      
-      // Update task record as failed
       await db.agentTask.update({
         where: { id: agentTask.id },
         data: { status: "failed", errorMessage: errorMsg },
       });
-
-      return NextResponse.json({
-        taskId: agentTask.id,
-        agentType,
-        status: "failed",
-        error: errorMsg,
-      }, { status: 500 });
+      return NextResponse.json({ taskId: agentTask.id, status: "failed", error: errorMsg }, { status: 500 });
     }
   } catch (error) {
     console.error("Agent generation error:", error);
