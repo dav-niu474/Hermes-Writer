@@ -160,3 +160,17 @@ export const CHAPTER_STATUS_MAP: Record<ChapterStatus, { label: string; color: s
   review: { label: "审核中", color: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
   completed: { label: "已完成", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" }
 };
+
+// Available AI Models
+export interface LLMModel {
+  id: string;
+  name: string;
+  provider: string;
+  description: string;
+}
+
+export const AVAILABLE_MODELS: LLMModel[] = [
+  { id: "glm-4-7", name: "GLM 4.7", provider: "NVIDIA NIM", description: "智谱 GLM-4.7 大语言模型" },
+  { id: "glm-5", name: "GLM 5", provider: "NVIDIA NIM", description: "智谱 GLM-5 旗舰模型" },
+  { id: "kimi-2.5", name: "Kimi 2.5", provider: "NVIDIA NIM", description: "Moonshot Kimi 2.5 模型" },
+];

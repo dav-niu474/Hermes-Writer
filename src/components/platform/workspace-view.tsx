@@ -5,13 +5,14 @@ import { useAppStore } from "@/lib/store";
 import {
   AGENT_DEFINITIONS,
   CHAPTER_STATUS_MAP,
-  AVAILABLE_MODELS,
+  type LLMModel,
   type Chapter,
   type Character,
   type WorldSetting,
   type AgentType,
   type WorldSettingCategory,
 } from "@/lib/types";
+import { AVAILABLE_MODELS } from "@/lib/ai";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
