@@ -718,13 +718,10 @@ async function initDatabase(): Promise<any> {
     try {
       const url = getPostgresUrl()!;
       const pg = await import("pg");
-      // Append SSL params if not already present
-      let connUrl = url;
-      if (!connUrl.includes("sslmode")) {
-        connUrl += "?sslmode=no-verify";
-      }
+      // Bypass self-signed certificate verification for Supabase
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
       const pool = new pg.Pool({
-        connectionString: connUrl,
+        connectionString: url,
         max: 1,
         statement_timeout: 30000,
       });
