@@ -1,5 +1,4 @@
 import { createSqliteDb } from "./db-sqlite";
-import { PrismaClient } from "@prisma/client";
 
 // ============================================================
 // Environment detection
@@ -9,57 +8,63 @@ function isPostgresUrl(url: string): boolean {
   return url.startsWith("postgresql://") || url.startsWith("postgres://");
 }
 
-export const isPostgresAvailable = !!(
-  process.env.POSTGRES_PRISMA_URL ||
-  process.env.harmesWriter_POSTGRES_PRISMA_URL ||
-  (process.env.DATABASE_URL && isPostgresUrl(process.env.DATABASE_URL) && !process.env.DATABASE_URL.includes("dummy"))
-);
+function getPostgresUrl(): string | null {
+  if (process.env.harmesWriter_POSTGRES_PRISMA_URL) return process.env.harmesWriter_POSTGRES_PRISMA_URL;
+  if (process.env.POSTGRES_PRISMA_URL) return process.env.POSTGRES_PRISMA_URL;
+  if (process.env.DATABASE_URL && isPostgresUrl(process.env.DATABASE_URL) && !process.env.DATABASE_URL.includes("dummy")) {
+    return process.env.DATABASE_URL;
+  }
+  return null;
+}
+
+export const isPostgresAvailable = !!getPostgresUrl();
 
 // ============================================================
-// SQLite path
+// Simple PostgreSQL client using node:pg-compatible fetch
+// ============================================================
+
+interface PgClient {
+  query(text: string, params?: any[]): Promise<any>;
+  $queryRaw(template: TemplateStringsArray, ...values: any[]): Promise<any>;
+  $executeRawUnsafe(sql: string): Promise<any>;
+}
+
+function createPgClient(url: string): PgClient {
+  // Dynamic import to avoid build-time dependency on Prisma
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { neon } = require("@neondatabase/serverless");
+  const sql = neon(url);
+
+  return {
+    async query(text: string, params?: any[]) {
+      if (params && params.length > 0) {
+        return sql(text, ...params);
+      }
+      return sql(text);
+    },
+
+    async $queryRaw(template: TemplateStringsArray, ...values: any[]) {
+      const text = template.reduce((acc, part, i) => acc + part + (values[i] !== undefined ? values[i] : ''), '');
+      return sql(text);
+    },
+
+    async $executeRawUnsafe(sqlStr: string) {
+      return sql(sqlStr);
+    },
+  };
+}
+
+// ============================================================
+// Database initialization
 // ============================================================
 
 let db: any;
 
 if (isPostgresAvailable) {
-  // ── Production (Vercel / PostgreSQL) ──────────────────────
-  const globalForPrisma = globalThis as unknown as {
-    prisma: PrismaClient | undefined;
-  };
-
-  function getDatabaseUrl(): string {
-    const vercelPrismaUrl = process.env.harmesWriter_POSTGRES_PRISMA_URL;
-    if (vercelPrismaUrl) return vercelPrismaUrl;
-
-    const vercelUrl = process.env.POSTGRES_PRISMA_URL;
-    if (vercelUrl) return vercelUrl;
-
-    const standardUrl = process.env.DATABASE_URL;
-    if (standardUrl) return standardUrl;
-
-    throw new Error(
-      "No database URL configured. Set harmesWriter_POSTGRES_PRISMA_URL or DATABASE_URL."
-    );
-  }
-
-  function createPrismaClient(): PrismaClient {
-    const databaseUrl = getDatabaseUrl();
-    const connectionUrl = databaseUrl.includes("?")
-      ? databaseUrl
-      : `${databaseUrl}?connect_timeout=10&pool_timeout=10`;
-
-    return new PrismaClient({
-      datasourceUrl: connectionUrl,
-      log: process.env.NODE_ENV === "development" ? ["query"] : ["error"],
-    });
-  }
-
-  db = globalForPrisma.prisma ?? createPrismaClient();
-  if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
-
-  console.log("[db] Using Prisma + PostgreSQL");
+  const url = getPostgresUrl()!;
+  db = createPgClient(url);
+  console.log("[db] Using PostgreSQL (Neon)");
 } else {
-  // ── Local development (SQLite) ───────────────────────────
   db = createSqliteDb();
   console.log("[db] Using SQLite (local development)");
 }
@@ -73,14 +78,7 @@ export { db };
 let dbInitialized = false;
 let initPromise: Promise<void> | null = null;
 
-/**
- * All CREATE TABLE IF NOT EXISTS statements matching the Prisma schema.
- * Only used in PostgreSQL mode (SQLite tables are auto-created).
- * These are safe to re-run — IF NOT EXISTS and DO $$ ... EXCEPTION blocks
- * ensure idempotency.
- */
 const PG_SCHEMA_INIT_STATEMENTS = [
-  // User
   `CREATE TABLE IF NOT EXISTS "User" (
     "id" TEXT NOT NULL,
     "email" TEXT NOT NULL,
@@ -91,7 +89,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   )`,
   `DO $$ BEGIN ALTER TABLE "User" ADD CONSTRAINT "User_email_key" UNIQUE ("email"); EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // Novel
   `CREATE TABLE IF NOT EXISTS "Novel" (
     "id" TEXT NOT NULL,
     "title" TEXT NOT NULL,
@@ -105,7 +102,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
     CONSTRAINT "Novel_pkey" PRIMARY KEY ("id")
   )`,
 
-  // Chapter
   `CREATE TABLE IF NOT EXISTS "Chapter" (
     "id" TEXT NOT NULL,
     "novelId" TEXT NOT NULL,
@@ -122,7 +118,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   )`,
   `DO $$ BEGIN ALTER TABLE "Chapter" ADD CONSTRAINT "Chapter_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // Character
   `CREATE TABLE IF NOT EXISTS "Character" (
     "id" TEXT NOT NULL,
     "novelId" TEXT NOT NULL,
@@ -139,7 +134,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   )`,
   `DO $$ BEGIN ALTER TABLE "Character" ADD CONSTRAINT "Character_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // WorldSetting
   `CREATE TABLE IF NOT EXISTS "WorldSetting" (
     "id" TEXT NOT NULL,
     "novelId" TEXT NOT NULL,
@@ -152,7 +146,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   )`,
   `DO $$ BEGIN ALTER TABLE "WorldSetting" ADD CONSTRAINT "WorldSetting_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // AgentTask
   `CREATE TABLE IF NOT EXISTS "AgentTask" (
     "id" TEXT NOT NULL,
     "novelId" TEXT NOT NULL,
@@ -169,7 +162,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   `DO $$ BEGIN ALTER TABLE "AgentTask" ADD CONSTRAINT "AgentTask_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
   `DO $$ BEGIN ALTER TABLE "AgentTask" ADD CONSTRAINT "AgentTask_chapterId_fkey" FOREIGN KEY ("chapterId") REFERENCES "Chapter"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // NovelSpec
   `CREATE TABLE IF NOT EXISTS "NovelSpec" (
     "id" TEXT NOT NULL,
     "novelId" TEXT NOT NULL,
@@ -185,7 +177,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   )`,
   `DO $$ BEGIN ALTER TABLE "NovelSpec" ADD CONSTRAINT "NovelSpec_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // SpecDelta
   `CREATE TABLE IF NOT EXISTS "SpecDelta" (
     "id" TEXT NOT NULL,
     "specId" TEXT NOT NULL,
@@ -201,7 +192,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   `DO $$ BEGIN ALTER TABLE "SpecDelta" ADD CONSTRAINT "SpecDelta_specId_fkey" FOREIGN KEY ("specId") REFERENCES "NovelSpec"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
   `DO $$ BEGIN ALTER TABLE "SpecDelta" ADD CONSTRAINT "SpecDelta_proposalId_fkey" FOREIGN KEY ("proposalId") REFERENCES "ChangeProposal"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // ChangeProposal
   `CREATE TABLE IF NOT EXISTS "ChangeProposal" (
     "id" TEXT NOT NULL,
     "novelId" TEXT NOT NULL,
@@ -219,7 +209,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   )`,
   `DO $$ BEGIN ALTER TABLE "ChangeProposal" ADD CONSTRAINT "ChangeProposal_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // ChapterSnapshot
   `CREATE TABLE IF NOT EXISTS "ChapterSnapshot" (
     "id" TEXT NOT NULL,
     "novelId" TEXT NOT NULL,
@@ -235,7 +224,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   )`,
   `DO $$ BEGIN ALTER TABLE "ChapterSnapshot" ADD CONSTRAINT "ChapterSnapshot_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // Branch
   `CREATE TABLE IF NOT EXISTS "Branch" (
     "id" TEXT NOT NULL,
     "novelId" TEXT NOT NULL,
@@ -250,7 +238,6 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   )`,
   `DO $$ BEGIN ALTER TABLE "Branch" ADD CONSTRAINT "Branch_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-  // Performance indexes
   `CREATE INDEX IF NOT EXISTS "Chapter_novelId_idx" ON "Chapter"("novelId")`,
   `CREATE INDEX IF NOT EXISTS "Character_novelId_idx" ON "Character"("novelId")`,
   `CREATE INDEX IF NOT EXISTS "WorldSetting_novelId_idx" ON "WorldSetting"("novelId")`,
@@ -261,24 +248,14 @@ const PG_SCHEMA_INIT_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "Branch_novelId_idx" ON "Branch"("novelId")`,
 ];
 
-/**
- * Ensures all required database tables exist before any API operation.
- * - SQLite: tables are auto-created in `createSqliteDb()`, so this is a no-op.
- * - PostgreSQL: runs the full schema init SQL against the database.
- *
- * Safe to call on every request — after the first successful check,
- * it short-circuits via the `dbInitialized` flag.
- */
 export async function ensureDbInitialized(): Promise<void> {
   if (dbInitialized) return;
 
   if (!isPostgresAvailable) {
-    // SQLite mode: tables are created on init, just mark as done
     dbInitialized = true;
     return;
   }
 
-  // PostgreSQL mode: check and init
   if (initPromise) {
     await initPromise;
     return;
@@ -286,31 +263,27 @@ export async function ensureDbInitialized(): Promise<void> {
 
   initPromise = (async () => {
     try {
-      // Quick check: does the Novel table exist?
       await db.$queryRaw`SELECT 1 FROM "Novel" LIMIT 0`;
       dbInitialized = true;
       console.log("[db] PostgreSQL tables verified");
     } catch {
-      // Table doesn't exist — create the full schema
-      console.log("[db] Novel table not found, initializing PostgreSQL schema...");
+      console.log("[db] Initializing PostgreSQL schema...");
       for (const sql of PG_SCHEMA_INIT_STATEMENTS) {
         try {
           await db.$executeRawUnsafe(sql);
         } catch (err: any) {
-          console.warn(
-            `[db] Schema statement warning: ${err.message?.slice(0, 100) || "unknown"}`
-          );
+          console.warn(`[db] Schema warning: ${err.message?.slice(0, 100) || "unknown"}`);
         }
       }
       dbInitialized = true;
-      console.log("[db] PostgreSQL schema initialized successfully");
+      console.log("[db] PostgreSQL schema initialized");
     }
   })();
 
   try {
     await initPromise;
   } catch (err) {
-    console.error("[db] Database initialization failed (non-fatal):", err);
+    console.error("[db] DB init failed (non-fatal):", err);
     dbInitialized = true;
   } finally {
     initPromise = null;
