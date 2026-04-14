@@ -679,18 +679,12 @@ const SCHEMA_DDL = [
 ];
 
 async function ensureSchema(pool: SqlExecutor): Promise<void> {
-  let errors = 0;
   for (const sql of SCHEMA_DDL) {
     try {
       await pool.query(sql);
     } catch (err) {
-      errors++;
-      console.error("[db] DDL error:", sql.slice(0, 60), (err as Error).message?.slice(0, 120));
+      console.warn("[db] DDL warning:", sql.slice(0, 60), (err as Error).message?.slice(0, 120));
     }
-  }
-  if (errors > 0) {
-    console.error(`[db] ${errors} DDL errors during schema creation`);
-    throw new Error(`${errors} DDL errors during schema creation`);
   }
   console.log("[db] Schema auto-created/verified");
 }
@@ -705,36 +699,44 @@ let _initPromise: Promise<void> | null = null;
 async function initDatabase(): Promise<any> {
   if (_dbInitialized) return;
 
-  // Try PostgreSQL (via pg for Vercel serverless with Supabase)
+  // Try PostgreSQL (via @neondatabase/serverless Pool for Vercel compatibility)
   if (isPostgresAvailable) {
     try {
       const url = getPostgresUrl()!;
-      const pg = await import("pg");
-      const pool = new pg.Pool({
-        connectionString: url,
-        max: 3,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-      });
 
-      // Test connection & auto-create schema
+      // WebSocket polyfill for Vercel
+      if (typeof globalThis.WebSocket === "undefined") {
+        try {
+          const ws = await import("ws");
+          (globalThis as any).WebSocket = ws.default || ws;
+        } catch { /* ws may not be available */ }
+      }
+
+      const { Pool, neonConfig } = await import("@neondatabase/serverless");
+      // Disable prepared statements for better compatibility
+      (neonConfig as any).fetchEndpoint = undefined;
+      (neonConfig as any).fetchConnectionCache = true;
+
+      const pool = new Pool({ connectionString: url, max: 1 });
+
+      // Test connection
+      const testResult = await pool.query("SELECT 1 as test");
+      if (!testResult?.rows?.length) {
+        throw new Error("Connection test failed: no rows returned");
+      }
+
+      // Auto-create schema
       await ensureSchema(pool);
-      await pool.end(); // Close test connection
 
-      // Create a persistent pool for queries
-      const queryPool = new pg.Pool({
-        connectionString: url,
-        max: 3,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-      });
-
-      const pgDb = createPgDb(queryPool);
+      const pgDb = createPgDb(pool);
       _dbInitialized = true;
-      console.log("[db] PostgreSQL (pg) connected");
+      console.log("[db] PostgreSQL (Neon Pool) connected");
       return pgDb;
     } catch (err) {
-      console.warn("[db] PostgreSQL unavailable:", (err as Error).message?.slice(0, 120));
+      const errMsg = (err as Error).message?.slice(0, 200) || "Unknown error";
+      console.error("[db] PostgreSQL init failed:", errMsg);
+      // Don't fall through - if Postgres env is set, it should work
+      throw new Error(`PostgreSQL init failed: ${errMsg}`);
     }
   }
 

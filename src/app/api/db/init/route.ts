@@ -232,10 +232,10 @@ export async function GET() {
       database: "connected",
       mode: isPostgresAvailable ? "postgresql" : "sqlite",
     });
-  } catch {
+  } catch (error) {
     return NextResponse.json(
-      { status: "error", database: "stub-mode", mode: "noop" },
-      { status: 200 }
+      { status: "error", database: "disconnected", mode: isPostgresAvailable ? "postgresql" : "sqlite", error: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
     );
   }
 }
