@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { generateChat, generateChatStream, createStreamTransformer } from "@/lib/ai";
+import { generateChat, generateChatStream } from "@/lib/ai";
+import { db } from "@/lib/db";
 import type { AgentType } from "@/lib/types";
 import { DEFAULT_AGENT_CONFIGS } from "@/lib/types";
 
@@ -16,12 +17,30 @@ interface OrchPlan {
   tasks: OrchTask[];
 }
 
-// SSE helper
+// Agent type → NovelSpec category mapping
+const AGENT_SPEC_CATEGORY: Partial<Record<AgentType, string>> = {
+  planner: "outline",
+  character: "characters",
+  worldbuilder: "worldbuilding",
+  editor: "style",
+  reviewer: "rules",
+};
+
+// Agent type → Spec title prefix mapping
+const AGENT_SPEC_TITLE: Partial<Record<AgentType, string>> = {
+  planner: "故事大纲",
+  character: "角色设定",
+  worldbuilder: "世界观设定",
+  editor: "编辑风格指南",
+  reviewer: "质量规则",
+};
+
+// ===== SSE helper =====
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-// Hermes planning prompt to generate structured task plan
+// ===== Hermes planning prompt =====
 function buildPlanningPrompt(userMessage: string, context: {
   novelTitle?: string;
   novelGenre?: string;
@@ -74,7 +93,7 @@ ${userMessage}
 5. 优先选择与需求最相关的Agent`;
 }
 
-// Get agent system prompt from configs
+// ===== Get agent system prompt =====
 function getAgentSystemPrompt(agentType: AgentType): string {
   const config = DEFAULT_AGENT_CONFIGS[agentType];
   if (config) {
@@ -86,13 +105,77 @@ function getAgentSystemPrompt(agentType: AgentType): string {
   return "你是一位专业的网文创作助手。";
 }
 
-// Execute a single agent task with streaming
+// ===== Parse raw NVIDIA SSE stream manually to separate reasoning from content =====
+async function parseRawSSEStream(
+  stream: ReadableStream<Uint8Array>,
+  onReasoning: (chunk: string) => void,
+  onContent: (chunk: string) => void
+): Promise<void> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      // Keep the last (potentially incomplete) line in the buffer
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed === "" || trimmed === "data: [DONE]") continue;
+        if (trimmed.startsWith("data: ")) {
+          try {
+            const json = JSON.parse(trimmed.slice(6));
+            const delta = json.choices?.[0]?.delta;
+            if (delta?.reasoning_content) {
+              onReasoning(delta.reasoning_content);
+            }
+            if (delta?.content) {
+              onContent(delta.content);
+            }
+          } catch {
+            // Skip malformed JSON chunks
+          }
+        }
+      }
+    }
+
+    // Process any remaining data in the buffer
+    if (buffer.trim()) {
+      const trimmed = buffer.trim();
+      if (trimmed !== "" && trimmed !== "data: [DONE]" && trimmed.startsWith("data: ")) {
+        try {
+          const json = JSON.parse(trimmed.slice(6));
+          const delta = json.choices?.[0]?.delta;
+          if (delta?.reasoning_content) {
+            onReasoning(delta.reasoning_content);
+          }
+          if (delta?.content) {
+            onContent(delta.content);
+          }
+        } catch {
+          // Skip malformed JSON
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// ===== Execute a single agent task with streaming (thinking + content separated) =====
 async function executeAgentTaskStream(
   agentType: AgentType,
   taskPrompt: string,
   model: string | undefined,
+  taskId: number,
   send: (event: string, data: unknown) => void
-): Promise<string> {
+): Promise<{ output: string; thinking: string }> {
   const systemPrompt = getAgentSystemPrompt(agentType);
   const config = DEFAULT_AGENT_CONFIGS[agentType];
   const messages = [
@@ -107,23 +190,171 @@ async function executeAgentTaskStream(
   };
 
   const streamBody = await generateChatStream(messages, genOptions);
-  const transformer = createStreamTransformer();
-  const readableStream = streamBody.pipeThrough(transformer);
 
-  const reader = readableStream.getReader();
   let fullOutput = "";
+  let fullThinking = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    fullOutput += value;
-    send("task_stream", { content: value });
-  }
+  await parseRawSSEStream(
+    streamBody,
+    // onReasoning callback
+    (chunk: string) => {
+      fullThinking += chunk;
+      send("task_thinking", { taskId, content: chunk });
+    },
+    // onContent callback
+    (chunk: string) => {
+      fullOutput += chunk;
+      send("task_stream", { content: chunk });
+    }
+  );
 
-  return fullOutput;
+  return { output: fullOutput, thinking: fullThinking };
 }
 
-// POST /api/agents/orchestrate — Multi-agent orchestration with SSE streaming
+// ===== Auto-save agent output to NovelSpec =====
+async function saveAgentOutputToSpec(
+  novelId: string,
+  agentType: AgentType,
+  taskTitle: string,
+  output: string,
+  taskId: number,
+  send: (event: string, data: unknown) => void
+): Promise<void> {
+  const category = AGENT_SPEC_CATEGORY[agentType];
+  if (!category) return; // e.g. "writer" has no spec mapping
+
+  const specTitle = AGENT_SPEC_TITLE[agentType] || taskTitle;
+
+  try {
+    // Check if a spec with this category already exists for this novel
+    const existingSpec = await db.novelSpec.findFirst({
+      where: { novelId, category },
+    });
+
+    let specId: string;
+
+    if (existingSpec) {
+      // Update existing spec (increment version)
+      specId = existingSpec.id;
+      await db.novelSpec.update({
+        where: { id: specId },
+        data: {
+          content: output,
+          version: (existingSpec.version || 1) + 1,
+          title: specTitle,
+          status: "active",
+        },
+      });
+    } else {
+      // Create new spec
+      specId = crypto.randomUUID();
+      await db.novelSpec.create({
+        data: {
+          id: specId,
+          novelId,
+          category,
+          title: specTitle,
+          content: output,
+          version: 1,
+          status: "active",
+        },
+      });
+    }
+
+    send("content_saved", {
+      taskId,
+      agent: agentType,
+      type: "spec",
+      category,
+      title: specTitle,
+      specId,
+    });
+  } catch (err) {
+    console.error(`[orchestrate] Failed to save spec for ${agentType}:`, err);
+    // Non-fatal: continue orchestration even if spec save fails
+  }
+}
+
+// ===== Auto-create branch =====
+async function autoCreateBranch(
+  novelId: string,
+  send: (event: string, data: unknown) => void
+): Promise<string | null> {
+  try {
+    const shortTimestamp = Date.now().toString(36);
+    const branchName = `hermes-${shortTimestamp}`;
+    const branchId = crypto.randomUUID();
+
+    const branch = await db.branch.create({
+      data: {
+        id: branchId,
+        novelId,
+        name: branchName,
+        description: "Hermes 编排自动创建的分支",
+        status: "active",
+      },
+    });
+
+    const createdBranchId = branch?.id || branchId;
+
+    send("branch_created", {
+      branchId: createdBranchId,
+      name: branchName,
+    });
+
+    return createdBranchId;
+  } catch (err) {
+    console.error("[orchestrate] Failed to auto-create branch:", err);
+    return null;
+  }
+}
+
+// ===== Auto-create Change Proposal =====
+async function autoCreateProposal(
+  novelId: string,
+  userMessage: string,
+  plan: OrchPlan,
+  send: (event: string, data: unknown) => void
+): Promise<void> {
+  try {
+    const proposalId = crypto.randomUUID();
+    const title = `Hermes编排: ${userMessage.slice(0, 50)}${userMessage.length > 50 ? "..." : ""}`;
+
+    const scopeDescription = plan.tasks
+      .map((t) => `${t.agent}(${t.title})`)
+      .join("、");
+
+    await db.changeProposal.create({
+      data: {
+        id: proposalId,
+        novelId,
+        title,
+        description: plan.analysis,
+        scope: scopeDescription,
+        impact: "medium",
+        tasks: JSON.stringify(
+          plan.tasks.map((t) => ({
+            agent: t.agent,
+            title: t.title,
+            description: t.description,
+          }))
+        ),
+        status: "completed",
+        completedAt: new Date().toISOString(),
+      },
+    });
+
+    send("proposal_created", {
+      proposalId,
+      title,
+    });
+  } catch (err) {
+    console.error("[orchestrate] Failed to auto-create proposal:", err);
+    // Non-fatal: continue even if proposal creation fails
+  }
+}
+
+// ===== POST /api/agents/orchestrate =====
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -226,8 +457,14 @@ export async function POST(request: Request) {
             })),
           });
 
+          // ===== Auto-Create Branch (after planning, if novelId provided) =====
+          let branchId: string | null = null;
+          if (novelId) {
+            branchId = await autoCreateBranch(novelId, send);
+          }
+
           // ===== Phase 2: Execute Tasks =====
-          const taskResults: { agent: string; title: string; output: string }[] = [];
+          const taskResults: { agent: string; title: string; output: string; thinking: string }[] = [];
 
           for (let i = 0; i < plan.tasks.length; i++) {
             const task = plan.tasks[i];
@@ -244,19 +481,30 @@ export async function POST(request: Request) {
             });
 
             try {
-              const output = await executeAgentTaskStream(
+              const { output, thinking } = await executeAgentTaskStream(
                 task.agent as AgentType,
                 task.prompt,
                 model,
+                i,
                 send
               );
 
-              taskResults.push({ agent: task.agent, title: task.title, output });
+              taskResults.push({ agent: task.agent, title: task.title, output, thinking });
               send("task_complete", { taskId: i, agent: task.agent, title: task.title, success: true });
+
+              // ===== Auto-Save Agent Output to Spec (if novelId provided) =====
+              if (novelId && output) {
+                await saveAgentOutputToSpec(novelId, task.agent as AgentType, task.title, output, i, send);
+              }
             } catch (taskErr) {
               const errMsg = taskErr instanceof Error ? taskErr.message : "Unknown error";
               send("task_complete", { taskId: i, agent: task.agent, title: task.title, success: false, error: errMsg });
             }
+          }
+
+          // ===== Auto-Create Change Proposal (after all tasks, if novelId provided) =====
+          if (novelId) {
+            await autoCreateProposal(novelId, message, plan, send);
           }
 
           // ===== Phase 3: Summary =====
@@ -286,23 +534,26 @@ ${message}
             { model: model || "glm-4-7", temperature: 0.4, maxTokens: 2048 }
           );
 
-          const summaryTransformer = createStreamTransformer();
-          const summaryReadable = summaryStream.pipeThrough(summaryTransformer);
-          const summaryReader = summaryReadable.getReader();
           let fullSummary = "";
-
-          while (true) {
-            const { done, value } = await summaryReader.read();
-            if (done) break;
-            fullSummary += value;
-            send("summary_stream", { content: value });
-          }
+          await parseRawSSEStream(
+            summaryStream,
+            // Summary reasoning (if any) → also stream as thinking
+            (chunk: string) => {
+              send("task_thinking", { taskId: -1, content: chunk });
+            },
+            // Summary content
+            (chunk: string) => {
+              fullSummary += chunk;
+              send("summary_stream", { content: chunk });
+            }
+          );
 
           // ===== Done =====
           send("done", {
             status: "completed",
             summary: fullSummary,
             taskCount: plan.tasks.length,
+            branchId: branchId || undefined,
             timestamp: new Date().toISOString(),
           });
         } catch (err) {

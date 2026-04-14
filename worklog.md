@@ -255,3 +255,36 @@ Stage Summary:
 - 核心功能：用户描述需求 → Hermes 自动分析并拆解为多个Agent任务 → 逐个执行并实时可视化 → 最终汇总
 - GitHub: https://github.com/dav-niu474/Hermes-Writer (已推送)
 - Vercel: 自动部署中
+---
+Task ID: 10
+Agent: Main Developer
+Task: 增强Agent协同编排系统 - 思考过程可视化 + 版本管理集成 + 大纲呈现优化
+
+Work Log:
+- 重写后端 orchestrate API (src/app/api/agents/orchestrate/route.ts):
+  - 新增 Agent 思考过程流式输出：手动解析 NVIDIA SSE 流，分离 reasoning_content 和 content
+  - 新增 task_thinking SSE 事件，实时推送 Agent 推理过程
+  - 自动创建分支：编排开始后自动为 novelId 创建 git-like 分支
+  - 自动保存内容：每个 Agent 完成后根据类型自动保存到 NovelSpec（planner→大纲, character→角色设定, worldbuilder→世界观, editor→风格指南, reviewer→规则约束）
+  - 自动创建变更提案：编排完成后创建 ChangeProposal 记录本次变更
+  - 新增 SSE 事件：branch_created, content_saved, proposal_created
+
+- 重写前端编排面板 (src/components/platform/orchestration-panel.tsx):
+  - Agent 思考过程可视化：每个任务卡片上方展示可折叠的思考区域（斜体、弱化样式、流式动画）
+  - 版本管理通知：分支创建通知（sky配色）、内容保存指示器（每个任务卡片上的"已保存到X"徽章）、变更提案创建通知
+  - 时间线连接器：任务卡片之间的垂直渐变线和彩色圆点
+  - 任务卡片入场动画
+  - 增强的进度条（脉冲光效）
+
+- 优化工作区视图 (src/components/platform/workspace-view.tsx):
+  - 新增"大纲"标签页：左侧栏第一个tab，展示 NovelSpec 大纲文档
+  - 大纲列表展示：标题、版本号、字数统计
+  - 大纲编辑功能：点击展开编辑器，支持保存和复制
+  - 其他规格文档快速访问：非大纲类型的规格文档也可在大纲tab中查看
+  - 空状态提示：引导用户使用 Hermes 协同编排生成大纲
+
+Stage Summary:
+- 修改文件：orchestrate/route.ts, orchestration-panel.tsx, workspace-view.tsx
+- 核心功能：Agent思考过程实时可视化 + 版本管理系统自动集成 + 大纲内容呈现
+- ESLint: 0 errors
+- TypeScript: 0 errors in modified files

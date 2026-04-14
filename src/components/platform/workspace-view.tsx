@@ -71,11 +71,14 @@ import {
   History,
   BarChart3,
   Settings,
+  ChevronLeft,
   ChevronDown,
   CheckCircle2,
   XCircle,
   Clock,
   Brain,
+  Map,
+  Copy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VersionPanel } from "@/components/platform/version-panel";
@@ -122,7 +125,10 @@ export function WorkspaceView() {
   const [showStatsPanel, setShowStatsPanel] = useState(false);
   const [charForm, setCharForm] = useState({ name: "", role: "supporting" as const, description: "", personality: "", appearance: "", backstory: "" });
   const [worldForm, setWorldForm] = useState({ name: "", category: "geography" as WorldSettingCategory, description: "" });
-  const [leftTab, setLeftTab] = useState<"chapters" | "characters" | "worldview" | "version">("chapters");
+  const [leftTab, setLeftTab] = useState<"outline" | "chapters" | "characters" | "worldview" | "version">("chapters");
+  const [specs, setSpecs] = useState<any[]>([]);
+  const [selectedSpec, setSelectedSpec] = useState<any>(null);
+  const [specContent, setSpecContent] = useState("");
   const [agentTasks, setAgentTasks] = useState<any[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const aiEndRef = useRef<HTMLDivElement>(null);
@@ -175,6 +181,16 @@ export function WorkspaceView() {
   useEffect(() => {
     aiEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [aiMessages, streamingText]);
+
+  // Load specs for outline tab
+  useEffect(() => {
+    if (leftTab === "outline" && selectedNovelId) {
+      fetch(`/api/specs?novelId=${selectedNovelId}`)
+        .then(res => res.ok ? res.json() : [])
+        .then(setSpecs)
+        .catch(() => {});
+    }
+  }, [leftTab, selectedNovelId]);
 
   // Auto-save
   async function saveChapter() {
@@ -504,18 +520,103 @@ export function WorkspaceView() {
         <ResizablePanel defaultSize={18} minSize={14} maxSize={28}>
           <div className="flex flex-col h-full border-r">
             <div className="flex border-b flex-shrink-0">
-              {(["chapters", "characters", "worldview", "version"] as const).map((tab) => (
+              {(["outline", "chapters", "characters", "worldview", "version"] as const).map((tab) => (
                 <button
                   key={tab}
                   className={cn("flex-1 px-2 py-2 text-[11px] font-medium transition-colors", leftTab === tab ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground")}
                   onClick={() => setLeftTab(tab)}
                 >
-                  {tab === "chapters" ? "章节" : tab === "characters" ? "角色" : tab === "worldview" ? "世界" : "版本"}
+                  {tab === "outline" ? "大纲" : tab === "chapters" ? "章节" : tab === "characters" ? "角色" : tab === "worldview" ? "世界" : "版本"}
                 </button>
               ))}
             </div>
 
             <ScrollArea className="flex-1">
+              {leftTab === "outline" && (
+                <div className="p-1.5 space-y-1">
+                  {selectedSpec ? (
+                    <div className="space-y-2">
+                      <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground text-xs h-7" onClick={() => { setSelectedSpec(null); setSpecContent(""); }}>
+                        <ChevronLeft className="size-3 mr-1" />返回大纲列表
+                      </Button>
+                      <div className="rounded-lg border p-2">
+                        <p className="text-xs font-medium mb-1">{selectedSpec.title}</p>
+                        <Badge variant="secondary" className="text-[9px]">v{selectedSpec.version}</Badge>
+                      </div>
+                      <Textarea
+                        value={specContent}
+                        onChange={(e) => setSpecContent(e.target.value)}
+                        className="min-h-[200px] text-xs font-mono leading-relaxed"
+                        placeholder="大纲内容..."
+                      />
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] flex-1" onClick={() => {
+                          if (selectedSpec) {
+                            fetch(`/api/specs/${selectedSpec.id}`, {
+                              method: "PUT",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ content: specContent }),
+                            }).then(() => {
+                              fetch(`/api/specs?novelId=${selectedNovelId}`).then(r => r.ok ? r.json() : []).then(setSpecs);
+                            });
+                          }
+                        }}>
+                          <Save className="size-3 mr-1" />保存
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => {
+                          navigator.clipboard.writeText(specContent);
+                        }}>
+                          <Copy className="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {specs.filter(s => s.category === "outline").length === 0 ? (
+                        <div className="text-center py-6 text-muted-foreground text-xs">
+                          <Map className="size-6 mx-auto mb-2 text-amber-400" />
+                          <p className="font-medium">暂无大纲</p>
+                          <p className="text-[10px] mt-1">使用 Hermes 协同编排自动生成</p>
+                        </div>
+                      ) : (
+                        specs.filter(s => s.category === "outline").map(spec => (
+                          <div key={spec.id} className="rounded-md px-2 py-2 hover:bg-muted cursor-pointer transition-colors" onClick={() => { setSelectedSpec(spec); setSpecContent(spec.content); }}>
+                            <div className="flex items-center gap-2">
+                              <div className="size-5 rounded bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                                <Map className="size-3 text-amber-500" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium truncate">{spec.title}</p>
+                                <p className="text-[9px] text-muted-foreground">v{spec.version} · {spec.content.length} 字</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {specs.filter(s => s.category !== "outline").length > 0 && (
+                        <>
+                          <Separator className="my-1" />
+                          <p className="text-[10px] text-muted-foreground px-2 font-medium">其他规格文档</p>
+                          {specs.filter(s => s.category !== "outline").map(spec => (
+                            <div key={spec.id} className="rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer transition-colors" onClick={() => { setSelectedSpec(spec); setSpecContent(spec.content); }}>
+                              <div className="flex items-center gap-2">
+                                <div className="size-5 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
+                                  <FileText className="size-3 text-muted-foreground" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[11px] font-medium truncate">{spec.title}</p>
+                                  <p className="text-[9px] text-muted-foreground">{spec.category === "characters" ? "角色" : spec.category === "worldbuilding" ? "世界观" : spec.category === "style" ? "风格" : spec.category} · v{spec.version}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               {leftTab === "chapters" && (
                 <div className="p-1.5 space-y-0.5">
                   {chapters.map((ch) => (
