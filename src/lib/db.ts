@@ -438,13 +438,15 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
           `INSERT INTO "${tableName}" (${colList}) VALUES (${valueStr}) RETURNING *`
         );
 
+        console.log(`[db] create result: rows=${result?.rows?.length}, keys=${result?.rows?.[0] ? Object.keys(result.rows[0]).join(',') : 'none'}`);
+
         if (result.rows.length > 0) {
           return rowToCamel(result.rows[0]);
         }
-        return { id, ...data, createdAt: now, updatedAt: now };
+        return { id, ...data, createdAt: now, updatedAt: now, _warning: "no rows returned" };
       } catch (err) {
-        console.error(`[db] create error on ${tableName}:`, err);
-        return { id: data.id || randomUUID(), ...data };
+        console.error(`[db] create error on ${tableName}:`, (err as Error).message, (err as Error).stack?.slice(0, 300));
+        return { id: data.id || randomUUID(), ...data, _dbError: (err as Error).message };
       }
     },
 
