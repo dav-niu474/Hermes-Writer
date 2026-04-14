@@ -147,8 +147,8 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
       if (relOpts && typeof relOpts === "object" && relOpts._count) {
         const countSelect = relOpts._count.select || {};
         const countKeys = Object.keys(countSelect);
-        // FK column on child table pointing to parent (this table)
-        const parentFk = snakeToCamel(tableName) + "Id";
+        // FK column on child table: e.g., "Novel" → "novelId"
+        const parentFk = tableName.charAt(0).toLowerCase() + tableName.slice(1) + "Id";
         if (countKeys.length > 0) {
           // Nested count: count chapters, characters, etc per parent row
           for (const row of rows) {
@@ -212,10 +212,10 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
           }
         } else {
           // HasMany: use parent's id to find children
-          const fkCol = tableName + "Id"; // e.g., "Novel" → "novelId"
+          const fkCol = tableName.charAt(0).toLowerCase() + tableName.slice(1) + "Id"; // e.g., "Novel" → "novelId"
           let relRows;
           if (typeof relOpts === "object" && relOpts !== null) {
-            let query = `SELECT * FROM "${actualTable}" WHERE "${snakeToCamel(fkCol)}" = $1`;
+            let query = `SELECT * FROM "${actualTable}" WHERE "${fkCol}" = $1`;
             const params: any[] = [row.id];
             if (relOpts.orderBy) {
               const orderField = relOpts.orderBy.createdAt ? "createdAt" : Object.keys(relOpts.orderBy)[0];
@@ -229,7 +229,7 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
             relRows = await pool.query(query, params);
           } else {
             relRows = await pool.query(
-              `SELECT * FROM "${actualTable}" WHERE "${snakeToCamel(fkCol)}" = $1`,
+              `SELECT * FROM "${actualTable}" WHERE "${fkCol}" = $1`,
               [row.id]
             );
           }
