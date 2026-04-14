@@ -296,7 +296,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ status: "failed", error: errorMsg }, { status: 500 });
     }
   } catch (error) {
-    console.error("Agent generation error:", error);
-    return NextResponse.json({ error: "Failed to process agent request" }, { status: 500 });
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    console.error("Agent generation error:", errorMsg, error);
+    return NextResponse.json({ error: "Failed to process agent request", details: errorMsg }, { status: 500 });
   }
 }
