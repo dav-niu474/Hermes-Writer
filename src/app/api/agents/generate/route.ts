@@ -132,16 +132,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "agentType and message are required" }, { status: 400 });
     }
 
-    // Create agent task record
-    const agentTask = await db.agentTask.create({
-      data: {
-        novelId: novelId || "default",
-        chapterId: chapterId || null,
-        agentType: agentType as AgentType,
-        status: "running",
-        input: message,
-      },
-    });
+    // Create agent task record (skip if no valid novelId due to FK constraint)
+    let agentTask: any = null;
+    if (novelId) {
+      try {
+        agentTask = await db.agentTask.create({
+          data: {
+            novelId,
+            chapterId: chapterId || null,
+            agentType: agentType as AgentType,
+            status: "running",
+            input: message,
+          },
+        });
+      } catch (taskErr) {
+        console.warn("[agent] Could not create AgentTask record:", taskErr);
+      }
+    }
 
     // Use client-sent systemPrompt or fall back to defaults
     const systemPrompt = clientSystemPrompt || AGENT_SYSTEM_PROMPTS[agentType as AgentType] || AGENT_SYSTEM_PROMPTS.hermes;
@@ -193,17 +200,25 @@ export async function POST(request: Request) {
               }
               controller.close();
 
-              // Update task record
-              await db.agentTask.update({
-                where: { id: agentTask.id },
-                data: { status: "completed", output: fullOutput },
-              });
+              // Update task record if it exists
+              if (agentTask?.id) {
+                try {
+                  await db.agentTask.update({
+                    where: { id: agentTask.id },
+                    data: { status: "completed", output: fullOutput },
+                  });
+                } catch { /* non-critical */ }
+              }
             } catch (err) {
               const errorMsg = err instanceof Error ? err.message : "Stream error";
-              await db.agentTask.update({
-                where: { id: agentTask.id },
-                data: { status: "failed", errorMessage: errorMsg },
-              });
+              if (agentTask?.id) {
+                try {
+                  await db.agentTask.update({
+                    where: { id: agentTask.id },
+                    data: { status: "failed", errorMessage: errorMsg },
+                  });
+                } catch { /* non-critical */ }
+              }
               controller.error(err);
             }
           },
@@ -236,11 +251,15 @@ export async function POST(request: Request) {
         });
       } catch (aiError) {
         const errorMsg = aiError instanceof Error ? aiError.message : "Unknown error";
-        await db.agentTask.update({
-          where: { id: agentTask.id },
-          data: { status: "failed", errorMessage: errorMsg },
-        });
-        return NextResponse.json({ taskId: agentTask.id, status: "failed", error: errorMsg }, { status: 500 });
+        if (agentTask?.id) {
+          try {
+            await db.agentTask.update({
+              where: { id: agentTask.id },
+              data: { status: "failed", errorMessage: errorMsg },
+            });
+          } catch { /* non-critical */ }
+        }
+        return NextResponse.json({ status: "failed", error: errorMsg }, { status: 500 });
       }
     }
 
@@ -248,13 +267,17 @@ export async function POST(request: Request) {
     try {
       const output = await generateChat(messages, genOptions);
 
-      await db.agentTask.update({
-        where: { id: agentTask.id },
-        data: { status: "completed", output },
-      });
+      if (agentTask?.id) {
+        try {
+          await db.agentTask.update({
+            where: { id: agentTask.id },
+            data: { status: "completed", output },
+          });
+        } catch { /* non-critical */ }
+      }
 
       return NextResponse.json({
-        taskId: agentTask.id,
+        taskId: agentTask?.id,
         agentType,
         status: "completed",
         output,
@@ -262,11 +285,15 @@ export async function POST(request: Request) {
       });
     } catch (aiError) {
       const errorMsg = aiError instanceof Error ? aiError.message : "Unknown error";
-      await db.agentTask.update({
-        where: { id: agentTask.id },
-        data: { status: "failed", errorMessage: errorMsg },
-      });
-      return NextResponse.json({ taskId: agentTask.id, status: "failed", error: errorMsg }, { status: 500 });
+      if (agentTask?.id) {
+        try {
+          await db.agentTask.update({
+            where: { id: agentTask.id },
+            data: { status: "failed", errorMessage: errorMsg },
+          });
+        } catch { /* non-critical */ }
+      }
+      return NextResponse.json({ status: "failed", error: errorMsg }, { status: 500 });
     }
   } catch (error) {
     console.error("Agent generation error:", error);

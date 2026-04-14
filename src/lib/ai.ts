@@ -149,7 +149,9 @@ export function createStreamTransformer(): TransformStream<Uint8Array, string> {
         if (trimmed.startsWith("data: ")) {
           try {
             const json = JSON.parse(trimmed.slice(6));
-            const content = json.choices?.[0]?.delta?.content;
+            const delta = json.choices?.[0]?.delta;
+            // NVIDIA NIM models may use reasoning_content instead of content
+            const content = delta?.content || delta?.reasoning_content;
             if (content) {
               controller.enqueue(content);
             }
