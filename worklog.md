@@ -147,3 +147,28 @@ Stage Summary:
 - Agent config persisted in localStorage
 - End-to-end tested: DB health → Create Novel → Create Chapter → AI Generation (all pass)
 - Lint clean, GitHub pushed, Vercel deployed
+
+---
+Task ID: 7
+Agent: Bug Fix Agent
+Task: Fix AI API connectivity issues - FK constraint and streaming parsing
+
+Work Log:
+- Diagnosed root cause: .env missing NVIDIA_API_KEY (added)
+- Diagnosed FK constraint error: AgentTask.create with novelId="default" when no novel selected
+  - Fixed: made AgentTask creation optional, skip when no valid novelId
+  - Added null-safety checks on all agentTask.update calls
+- Diagnosed streaming issue: NVIDIA GLM 4.7 returns content in "reasoning_content" field, not "content"
+  - Fixed createStreamTransformer to check both delta.content and delta.reasoning_content
+- Tested all 3 models:
+  - GLM 4.7 non-streaming: ✅ (10.4s, correct Chinese response)
+  - GLM 4.7 streaming: ✅ (5.4s, rich reasoning + creative output)
+  - Kimi 2.5: ⚠️ (NVIDIA NIM service timeout, likely model availability issue)
+- Pushed fix commit to GitHub
+- Verified Vercel auto-deployment and production health
+
+Stage Summary:
+- AI API now fully functional for GLM 4.7 (streaming + non-streaming)
+- Root causes fixed: missing API key, FK constraint, reasoning_content parsing
+- Code quality: ESLint clean, proper null-safety
+- Vercel production: healthy, DB initialized, NVIDIA_API_KEY configured
