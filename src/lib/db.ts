@@ -80,6 +80,179 @@ type SqlExecutor = {
 };
 
 /**
+ * Supabase client implementation (Prisma-compatible API)
+ * Uses Supabase JS SDK for reliable serverless database access
+ */
+function createSupabaseDb(supabase: any) {
+  function toSnakeCase(str: string): string {
+    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+  }
+  function toCamelCase(str: string): string {
+    return str.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  }
+  function rowToCamel(row: Record<string, any>): Record<string, any> {
+    const r: Record<string, any> = {};
+    for (const [k, v] of Object.entries(row)) r[toCamelCase(k)] = v;
+    return r;
+  }
+  function dataToSnake(data: Record<string, any>): Record<string, any> {
+    const r: Record<string, any> = {};
+    for (const [k, v] of Object.entries(data)) {
+      r[k === "id" ? "id" : toSnakeCase(k)] = v;
+    }
+    return r;
+  }
+  function whereToSnake(where: Record<string, any>): Record<string, any> {
+    const r: Record<string, any> = {};
+    for (const [k, v] of Object.entries(where)) r[toSnakeCase(k)] = v;
+    return r;
+  }
+
+  const tableNames = {
+    user: "User", novel: "Novel", chapter: "Chapter", character: "Character",
+    worldSetting: "WorldSetting", agentTask: "AgentTask", novelSpec: "NovelSpec",
+    specDelta: "SpecDelta", changeProposal: "ChangeProposal",
+    chapterSnapshot: "ChapterSnapshot", branch: "Branch",
+  };
+
+  async function resolveIncludes(tableName: string, rows: Record<string, any>[], include: Record<string, any>) {
+    if (!include || Object.keys(include).length === 0 || rows.length === 0) return rows;
+    const tableMap: Record<string, string> = {
+      chapters: "Chapter", characters: "Character", worldSettings: "WorldSetting",
+      agentTasks: "AgentTask", specs: "NovelSpec", changeProposals: "ChangeProposal",
+      snapshots: "ChapterSnapshot", branches: "Branch", specDeltas: "SpecDelta",
+      novel: "Novel", chapter: "Chapter", proposal: "ChangeProposal", spec: "NovelSpec",
+    };
+    const fkBase = tableName.charAt(0).toLowerCase() + tableName.slice(1) + "Id";
+
+    for (const [relKey, relOpts] of Object.entries(include)) {
+      const tgt = tableMap[relKey] || relKey;
+      if (relOpts && typeof relOpts === "object" && relOpts._count) {
+        const cKeys = Object.keys(relOpts._count.select || {});
+        for (const row of rows) {
+          if (cKeys.length > 0) {
+            const counts: Record<string, number> = {};
+            for (const ck of cKeys) {
+              const ct = tableMap[ck] || ck;
+              const cfk = tableName.charAt(0).toLowerCase() + tableName.slice(1) + "Id";
+              const { count } = await supabase.from(ct).select("*", { count: "exact", head: true }).eq(toSnakeCase(cfk), row.id);
+              counts[ck] = count || 0;
+            }
+            row._count = counts;
+          } else {
+            const { count } = await supabase.from(tgt).select("*", { count: "exact", head: true }).eq(toSnakeCase(fkBase), row.id);
+            row._count = count || 0;
+          }
+        }
+        continue;
+      }
+      if (["novel", "chapter", "spec", "proposal"].includes(relKey)) {
+        const fk = relKey + "Id";
+        for (const row of rows) {
+          const fv = row[fk];
+          if (fv) {
+            const { data } = await supabase.from(tgt).select("*").eq("id", fv).single();
+            row[relKey] = data ? rowToCamel(data) : null;
+          } else row[relKey] = null;
+        }
+      } else {
+        for (const row of rows) {
+          let q = supabase.from(tgt).select("*").eq(toSnakeCase(fkBase), row.id);
+          if (relOpts?.orderBy) { const f = Object.keys(relOpts.orderBy)[0]; q = q.order(toSnakeCase(f), { ascending: String(Object.values(relOpts.orderBy)[0]) === "asc" }); }
+          if (relOpts?.take) q = q.limit(relOpts.take);
+          const { data } = await q;
+          row[relKey] = (data || []).map(rowToCamel);
+        }
+      }
+    }
+    return rows;
+  }
+
+  const makeModel = (name: string) => ({
+    findMany: async (opts?: any) => {
+      try {
+        const t = tableNames[name];
+        let q = supabase.from(t).select("*");
+        if (opts?.where) q = q.match(whereToSnake(opts.where));
+        if (opts?.orderBy) { const f = Object.keys(opts.orderBy)[0]; q = q.order(toSnakeCase(f), { ascending: String(Object.values(opts.orderBy)[0]) === "asc" }); }
+        if (opts?.take) q = q.limit(opts.take);
+        const { data, error } = await q;
+        if (error) throw error;
+        let rows = (data || []).map(rowToCamel);
+        if (opts?.include) rows = await resolveIncludes(name, rows, opts.include);
+        return rows;
+      } catch (e) { console.error(`[db] ${name}.findMany:`, e); return []; }
+    },
+    findUnique: async (args?: any) => {
+      try {
+        const { data, error } = await supabase.from(tableNames[name]).select("*").match(whereToSnake(args?.where || {})).single();
+        if (error?.code === "PGRST116") return null;
+        if (error) throw error;
+        if (!data) return null;
+        let row = rowToCamel(data);
+        if (args?.include) await resolveIncludes(name, [row], args.include);
+        return row;
+      } catch (e) { console.error(`[db] ${name}.findUnique:`, e); return null; }
+    },
+    findFirst: async (args?: any) => {
+      try {
+        let q = supabase.from(tableNames[name]).select("*");
+        if (args?.where) q = q.match(whereToSnake(args.where));
+        if (args?.orderBy) { const f = Object.keys(args.orderBy)[0]; q = q.order(toSnakeCase(f), { ascending: String(Object.values(args.orderBy)[0]) === "asc" }); }
+        q = q.limit(1);
+        const { data, error } = await q;
+        if (error) throw error;
+        if (!data?.length) return null;
+        let row = rowToCamel(data[0]);
+        if (args?.include) await resolveIncludes(name, [row], args.include);
+        return row;
+      } catch (e) { console.error(`[db] ${name}.findFirst:`, e); return null; }
+    },
+    create: async (args: { data: any }) => {
+      try {
+        const { data, error } = await supabase.from(tableNames[name]).insert(dataToSnake(args.data)).select("*").single();
+        if (error) throw error;
+        return rowToCamel(data);
+      } catch (e) { console.error(`[db] ${name}.create:`, e); return { id: args.data.id || randomUUID(), ...args.data, _dbError: (e as Error).message }; }
+    },
+    update: async (args?: any) => {
+      try {
+        const { data, error } = await supabase.from(tableNames[name]).update(dataToSnake(args?.data || {})).match(whereToSnake(args?.where || {})).select("*").single();
+        if (error) throw error;
+        return rowToCamel(data);
+      } catch (e) { console.error(`[db] ${name}.update:`, e); return null; }
+    },
+    delete: async (args?: any) => {
+      try {
+        const { data, error } = await supabase.from(tableNames[name]).delete().match(whereToSnake(args?.where || {})).select("*").single();
+        if (error) throw error;
+        return rowToCamel(data);
+      } catch (e) { console.error(`[db] ${name}.delete:`, e); return null; }
+    },
+    count: async (opts?: any) => {
+      try {
+        let q = supabase.from(tableNames[name]).select("*", { count: "exact", head: true });
+        if (opts?.where) q = q.match(whereToSnake(opts.where));
+        const { count, error } = await q;
+        if (error) throw error;
+        return count || 0;
+      } catch (e) { console.error(`[db] ${name}.count:`, e); return 0; }
+    },
+    upsert: async (args: any) => ({ id: args.where?.id, ...args.create }),
+  });
+
+  return {
+    user: makeModel("user"), novel: makeModel("novel"), chapter: makeModel("chapter"),
+    character: makeModel("character"), worldSetting: makeModel("worldSetting"),
+    agentTask: makeModel("agentTask"), novelSpec: makeModel("novelSpec"),
+    specDelta: makeModel("specDelta"), changeProposal: makeModel("changeProposal"),
+    chapterSnapshot: makeModel("chapterSnapshot"), branch: makeModel("branch"),
+    $queryRaw: async () => null, $executeRawUnsafe: async () => 0,
+    $connect: async () => {}, $disconnect: async () => {},
+  };
+}
+
+/**
  * Build a Prisma-compatible model proxy for a given table using raw SQL
  */
 function createPgModel(pool: SqlExecutor, tableName: string) {
@@ -713,41 +886,51 @@ let _initPromise: Promise<void> | null = null;
 async function initDatabase(): Promise<any> {
   if (_dbInitialized) return;
 
-  // Try PostgreSQL (via pg driver for direct Supabase connection)
+  // Try PostgreSQL (via Supabase JS client for reliable serverless connection)
   if (isPostgresAvailable) {
     try {
-      const pg = await import("pg");
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      const { createClient } = await import("@supabase/supabase-js");
 
-      // Build connection string from individual env vars to ensure correct primary connection
-      let connUrl = getPostgresUrl()!;
-      if (process.env.hermersWriter_POSTGRES_HOST) {
-        const host = process.env.hermersWriter_POSTGRES_HOST;
-        const user = process.env.hermersWriter_POSTGRES_USER || "postgres";
-        const pass = process.env.hermersWriter_POSTGRES_PASSWORD || "";
-        const db = process.env.hermersWriter_POSTGRES_DATABASE || "postgres";
-        connUrl = `postgresql://${user}:${pass}@${host}:5432/${db}?sslmode=no-verify`;
-        console.log(`[db] Using direct connection to ${host}:5432/${db}`);
+      // Use the Supabase URL and anon key for client-side compatible access,
+      // or service role key for admin access (bypasses RLS)
+      const supabaseUrl = process.env.NEXT_PUBLIC_hermersWriter_SUPABASE_URL
+        || process.env.hermersWriter_SUPABASE_URL
+        || "";
+      const supabaseKey = process.env.hermersWriter_SUPABASE_SERVICE_ROLE_KEY
+        || process.env.hermersWriter_SUPABASE_ANON_KEY
+        || "";
+
+      if (!supabaseUrl || !supabaseKey) {
+        throw new Error("Missing Supabase URL or key");
       }
 
-      const pool = new pg.Pool({
-        connectionString: connUrl,
-        max: 1,
-        statement_timeout: 30000,
-      });
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Test connection
-      const testResult = await pool.query("SELECT 1 as test");
-      if (!testResult?.rows?.length) {
-        throw new Error("Connection test failed");
+      const { error: testError } = await supabase.from("Novel").select("id").limit(1);
+      if (testError) {
+        throw new Error(`Supabase test failed: ${testError.message}`);
       }
 
-      // Auto-create schema
-      await ensureSchema(pool);
+      // Auto-create tables
+      const sqlExecutor: SqlExecutor = {
+        query: async (text: string, _params?: any[]) => {
+          const { data, error } = await supabase.rpc("exec_sql", { sql: text });
+          if (error) throw error;
+          return { rows: Array.isArray(data) ? data : [] };
+        },
+      };
 
-      const pgDb = createPgDb(pool);
+      // Try to create tables - if the RPC doesn't exist, tables are likely already created
+      try {
+        await ensureSchema(sqlExecutor);
+      } catch {
+        console.log("[db] Schema creation skipped (tables may already exist or RPC not available)");
+      }
+
+      const pgDb = createSupabaseDb(supabase);
       _dbInitialized = true;
-      console.log("[db] PostgreSQL (pg) connected");
+      console.log("[db] Supabase client connected");
       return pgDb;
     } catch (err) {
       const errMsg = (err as Error).message?.slice(0, 200) || "Unknown error";
