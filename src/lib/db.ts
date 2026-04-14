@@ -713,30 +713,22 @@ let _initPromise: Promise<void> | null = null;
 async function initDatabase(): Promise<any> {
   if (_dbInitialized) return;
 
-  // Try PostgreSQL (via @neondatabase/serverless Pool for Vercel compatibility)
+  // Try PostgreSQL (via pg driver for direct Supabase connection)
   if (isPostgresAvailable) {
     try {
       const url = getPostgresUrl()!;
-
-      // WebSocket polyfill for Vercel
-      if (typeof globalThis.WebSocket === "undefined") {
-        try {
-          const ws = await import("ws");
-          (globalThis as any).WebSocket = ws.default || ws;
-        } catch { /* ws may not be available */ }
-      }
-
-      const { Pool, neonConfig } = await import("@neondatabase/serverless");
-      // Disable prepared statements for better compatibility
-      (neonConfig as any).fetchEndpoint = undefined;
-      (neonConfig as any).fetchConnectionCache = true;
-
-      const pool = new Pool({ connectionString: url, max: 1 });
+      const pg = await import("pg");
+      const pool = new pg.Pool({
+        connectionString: url,
+        max: 1,
+        ssl: { rejectUnauthorized: false },
+        statement_timeout: 30000,
+      });
 
       // Test connection
       const testResult = await pool.query("SELECT 1 as test");
       if (!testResult?.rows?.length) {
-        throw new Error("Connection test failed: no rows returned");
+        throw new Error("Connection test failed");
       }
 
       // Auto-create schema
@@ -744,12 +736,11 @@ async function initDatabase(): Promise<any> {
 
       const pgDb = createPgDb(pool);
       _dbInitialized = true;
-      console.log("[db] PostgreSQL (Neon Pool) connected");
+      console.log("[db] PostgreSQL (pg) connected");
       return pgDb;
     } catch (err) {
       const errMsg = (err as Error).message?.slice(0, 200) || "Unknown error";
       console.error("[db] PostgreSQL init failed:", errMsg);
-      // Don't fall through - if Postgres env is set, it should work
       throw new Error(`PostgreSQL init failed: ${errMsg}`);
     }
   }
