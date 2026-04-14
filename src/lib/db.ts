@@ -100,7 +100,7 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
 
   const cols = columnMap[tableName] || {};
   const colNames = Object.keys(cols);
-  const colList = colNames.join(", ");
+  const colList = colNames.map(c => `"${c}"`).join(", ");
   const paramList = colNames.map((_, i) => `$${i + 1}`).join(", ");
 
   function snakeToCamel(snake: string): string {
@@ -438,7 +438,7 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
         return { id, ...data, createdAt: now, updatedAt: now };
       } catch (err) {
         console.error(`[db] create error on ${tableName}:`, err);
-        return { id: data.id || randomUUID(), ...data, _error: (err as Error).message };
+        return { id: data.id || randomUUID(), ...data };
       }
     },
 
