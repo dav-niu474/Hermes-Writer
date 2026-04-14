@@ -427,9 +427,15 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
         const allData = { ...data, id, createdAt: now, updatedAt: now };
         const values = getValues(allData, colNames);
 
+        // Build non-parameterized INSERT for Neon compatibility
+        const valueStr = values.map(v => {
+          if (v === null || v === undefined) return 'NULL';
+          if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`;
+          return String(v);
+        }).join(", ");
+
         const result = await pool.query(
-          `INSERT INTO "${tableName}" (${colList}) VALUES (${paramList}) RETURNING *`,
-          values
+          `INSERT INTO "${tableName}" (${colList}) VALUES (${valueStr}) RETURNING *`
         );
 
         if (result.rows.length > 0) {
