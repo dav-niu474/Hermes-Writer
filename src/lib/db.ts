@@ -211,16 +211,8 @@ function createSupabaseDb(supabase: any) {
     create: async (args: { data: any }) => {
       try {
         const now = new Date().toISOString();
-        const insertData = {
-          id: args.data.id || crypto.randomUUID(),
-          createdAt: now,
-          updatedAt: now,
-          ...dataToSnake(args.data),
-        };
-        // Don't override id/timestamps if already set
-        if (args.data.id) insertData.id = args.data.id;
-        if (args.data.createdAt) insertData.created_at = args.data.createdAt;
-        if (args.data.updatedAt) insertData.updated_at = args.data.updatedAt;
+        const enrichedData = { id: args.data.id || crypto.randomUUID(), createdAt: now, updatedAt: now, ...args.data };
+        const insertData = dataToSnake(enrichedData);
         // Remove undefined values
         for (const k of Object.keys(insertData)) {
           if (insertData[k] === undefined) delete insertData[k];
