@@ -210,7 +210,22 @@ function createSupabaseDb(supabase: any) {
     },
     create: async (args: { data: any }) => {
       try {
-        const { data, error } = await supabase.from(tableNames[name]).insert(dataToSnake(args.data)).select("*").single();
+        const now = new Date().toISOString();
+        const insertData = {
+          id: args.data.id || crypto.randomUUID(),
+          createdAt: now,
+          updatedAt: now,
+          ...dataToSnake(args.data),
+        };
+        // Don't override id/timestamps if already set
+        if (args.data.id) insertData.id = args.data.id;
+        if (args.data.createdAt) insertData.created_at = args.data.createdAt;
+        if (args.data.updatedAt) insertData.updated_at = args.data.updatedAt;
+        // Remove undefined values
+        for (const k of Object.keys(insertData)) {
+          if (insertData[k] === undefined) delete insertData[k];
+        }
+        const { data, error } = await supabase.from(tableNames[name]).insert(insertData).select("*").single();
         if (error) throw error;
         return rowToCamel(data);
       } catch (e) { console.error(`[db] ${name}.create:`, e); return { id: args.data.id || randomUUID(), ...args.data, _dbError: (e as Error).message }; }
