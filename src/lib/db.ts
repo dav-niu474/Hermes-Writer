@@ -147,6 +147,8 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
       if (relOpts && typeof relOpts === "object" && relOpts._count) {
         const countSelect = relOpts._count.select || {};
         const countKeys = Object.keys(countSelect);
+        // FK column on child table pointing to parent (this table)
+        const parentFk = snakeToCamel(tableName) + "Id";
         if (countKeys.length > 0) {
           // Nested count: count chapters, characters, etc per parent row
           for (const row of rows) {
@@ -154,7 +156,7 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
             for (const countKey of countKeys) {
               const countTable = tableMapping[countKey] || countKey;
               const countResult = await pool.query(
-                `SELECT COUNT(*)::int as cnt FROM "${countTable}" WHERE "${relKey === "novel" ? "novelId" : snakeToCamel(relKey) + "Id"}" = $1`,
+                `SELECT COUNT(*)::int as cnt FROM "${countTable}" WHERE "${parentFk}" = $1`,
                 [row.id]
               );
               counts[countKey] = countResult.rows[0]?.cnt || 0;
@@ -163,9 +165,8 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
           }
         } else {
           for (const row of rows) {
-            const fkCol = relKey === "novel" ? "novelId" : snakeToCamel(relKey) + "Id";
             const result = await pool.query(
-              `SELECT COUNT(*)::int as cnt FROM "${actualTable}" WHERE "${fkCol}" = $1`,
+              `SELECT COUNT(*)::int as cnt FROM "${actualTable}" WHERE "${parentFk}" = $1`,
               [row.id]
             );
             row._count = result.rows[0]?.cnt || 0;
