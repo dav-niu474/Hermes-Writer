@@ -438,7 +438,7 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
         return { id, ...data, createdAt: now, updatedAt: now };
       } catch (err) {
         console.error(`[db] create error on ${tableName}:`, err);
-        return { id: data.id || randomUUID(), ...data };
+        return { id: data.id || randomUUID(), ...data, _error: (err as Error).message };
       }
     },
 
@@ -679,12 +679,18 @@ const SCHEMA_DDL = [
 ];
 
 async function ensureSchema(pool: SqlExecutor): Promise<void> {
+  let errors = 0;
   for (const sql of SCHEMA_DDL) {
     try {
       await pool.query(sql);
     } catch (err) {
-      console.warn("[db] DDL warning:", (err as Error).message?.slice(0, 80));
+      errors++;
+      console.error("[db] DDL error:", sql.slice(0, 60), (err as Error).message?.slice(0, 120));
     }
+  }
+  if (errors > 0) {
+    console.error(`[db] ${errors} DDL errors during schema creation`);
+    throw new Error(`${errors} DDL errors during schema creation`);
   }
   console.log("[db] Schema auto-created/verified");
 }
