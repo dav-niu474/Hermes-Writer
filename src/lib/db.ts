@@ -279,7 +279,7 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
     };
   }
 
-  async function buildSetClause(data: Record<string, any>, where: Record<string, any>): { sql: string; params: any[] } {
+  function buildSetClause(data: Record<string, any>): { sql: string; params: any[] } {
     const setParts: string[] = [];
     const params: any[] = [];
     let paramIdx = 1;
@@ -296,15 +296,6 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
       setParts.push(`"${col}" = $${paramIdx}`);
       params.push(value instanceof Date ? value.toISOString() : value);
       paramIdx++;
-    }
-
-    // Add where params
-    for (const [key, value] of Object.entries(where)) {
-      if (value !== undefined && value !== null) {
-        setParts.push(`"${snakeToCamel(key)}" = $${paramIdx}`);
-        params.push(value instanceof Date ? value.toISOString() : value);
-        paramIdx++;
-      }
     }
 
     return {
@@ -425,8 +416,8 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
     },
 
     create: async (args: { data: any }) => {
+      const data = args.data || {};
       try {
-        const data = args.data || {};
         const id = data.id || randomUUID();
         const now = new Date().toISOString();
         const allData = { ...data, id, createdAt: now, updatedAt: now };
@@ -448,10 +439,10 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
     },
 
     update: async (args?: any) => {
+      const data = args?.data || {};
       try {
         if (!args?.where) return null;
-        const data = args.data || {};
-        const { sql: setSql, params } = await buildSetClause(data, args.where);
+        const { sql: setSql, params } = buildSetClause(data);
         // Build WHERE clause separately
         const whereParts: string[] = [];
         const whereParams: any[] = [];
@@ -516,15 +507,12 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
 
     upsert: async (args: any) => {
       try {
-        // Try to find first, then create or update
         const existing = await pool.query(
           `SELECT * FROM "${tableName}" WHERE "id" = $1`,
           [args.where?.id]
         );
         if (existing.rows.length > 0) {
-          // Update
-          const updateData = args.update || {};
-          const { sql: setSql, params } = await buildSetClause(updateData, args.where);
+          const { sql: setSql, params } = buildSetClause(args.update || {});
           const result = await pool.query(
             `UPDATE "${tableName}" SET ${setSql} WHERE "id" = $${params.length + 1} RETURNING *`,
             [...params, args.where?.id]
