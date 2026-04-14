@@ -425,27 +425,33 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
         const id = data.id || randomUUID();
         const now = new Date().toISOString();
         const allData = { ...data, id, createdAt: now, updatedAt: now };
-        const values = getValues(allData, colNames);
 
-        // Build non-parameterized INSERT for Neon compatibility
-        const valueStr = values.map(v => {
-          if (v === null || v === undefined) return 'NULL';
-          if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`;
-          return String(v);
-        }).join(", ");
+        // Build INSERT with only non-null columns (let DB DEFAULT handle rest)
+        const insertCols: string[] = [];
+        const insertVals: string[] = [];
+        for (const col of colNames) {
+          const val = allData[col];
+          if (val === undefined) continue; // Skip undefined → use DB default
+          insertCols.push(`"${col}"`);
+          if (val === null) {
+            insertVals.push('NULL');
+          } else if (typeof val === 'string') {
+            insertVals.push(`'${val.replace(/'/g, "''")}'`);
+          } else {
+            insertVals.push(String(val));
+          }
+        }
 
         const result = await pool.query(
-          `INSERT INTO "${tableName}" (${colList}) VALUES (${valueStr}) RETURNING *`
+          `INSERT INTO "${tableName}" (${insertCols.join(", ")}) VALUES (${insertVals.join(", ")}) RETURNING *`
         );
-
-        console.log(`[db] create result: rows=${result?.rows?.length}, keys=${result?.rows?.[0] ? Object.keys(result.rows[0]).join(',') : 'none'}`);
 
         if (result.rows.length > 0) {
           return rowToCamel(result.rows[0]);
         }
-        return { id, ...data, createdAt: now, updatedAt: now, _warning: "no rows returned" };
+        return { id, ...data, createdAt: now, updatedAt: now };
       } catch (err) {
-        console.error(`[db] create error on ${tableName}:`, (err as Error).message, (err as Error).stack?.slice(0, 300));
+        console.error(`[db] create error on ${tableName}:`, (err as Error).message);
         return { id: data.id || randomUUID(), ...data, _dbError: (err as Error).message };
       }
     },
