@@ -716,12 +716,22 @@ async function initDatabase(): Promise<any> {
   // Try PostgreSQL (via pg driver for direct Supabase connection)
   if (isPostgresAvailable) {
     try {
-      const url = getPostgresUrl()!;
       const pg = await import("pg");
-      // Bypass self-signed certificate verification for Supabase
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
+      // Build connection string from individual env vars to ensure correct primary connection
+      let connUrl = getPostgresUrl()!;
+      if (process.env.hermersWriter_POSTGRES_HOST) {
+        const host = process.env.hermersWriter_POSTGRES_HOST;
+        const user = process.env.hermersWriter_POSTGRES_USER || "postgres";
+        const pass = process.env.hermersWriter_POSTGRES_PASSWORD || "";
+        const db = process.env.hermersWriter_POSTGRES_DATABASE || "postgres";
+        connUrl = `postgresql://${user}:${pass}@${host}:5432/${db}?sslmode=no-verify`;
+        console.log(`[db] Using direct connection to ${host}:5432/${db}`);
+      }
+
       const pool = new pg.Pool({
-        connectionString: url,
+        connectionString: connUrl,
         max: 1,
         statement_timeout: 30000,
       });
