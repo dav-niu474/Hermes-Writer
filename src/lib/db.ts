@@ -718,10 +718,14 @@ async function initDatabase(): Promise<any> {
     try {
       const url = getPostgresUrl()!;
       const pg = await import("pg");
+      // Append SSL params if not already present
+      let connUrl = url;
+      if (!connUrl.includes("sslmode")) {
+        connUrl += "?sslmode=no-verify";
+      }
       const pool = new pg.Pool({
-        connectionString: url,
+        connectionString: connUrl,
         max: 1,
-        ssl: { rejectUnauthorized: false },
         statement_timeout: 30000,
       });
 
