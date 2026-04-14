@@ -699,19 +699,33 @@ let _initPromise: Promise<void> | null = null;
 async function initDatabase(): Promise<any> {
   if (_dbInitialized) return;
 
-  // Try PostgreSQL (via Neon serverless) for Vercel
+  // Try PostgreSQL (via pg for Vercel serverless with Supabase)
   if (isPostgresAvailable) {
     try {
       const url = getPostgresUrl()!;
-      const { Pool } = await import("@neondatabase/serverless");
-      const pool = new Pool({ connectionString: url });
+      const pg = await import("pg");
+      const pool = new pg.Pool({
+        connectionString: url,
+        max: 3,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      });
 
       // Test connection & auto-create schema
       await ensureSchema(pool);
+      await pool.end(); // Close test connection
 
-      const pgDb = createPgDb(pool);
+      // Create a persistent pool for queries
+      const queryPool = new pg.Pool({
+        connectionString: url,
+        max: 3,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      });
+
+      const pgDb = createPgDb(queryPool);
       _dbInitialized = true;
-      console.log("[db] PostgreSQL (Neon Pool) connected");
+      console.log("[db] PostgreSQL (pg) connected");
       return pgDb;
     } catch (err) {
       console.warn("[db] PostgreSQL unavailable:", (err as Error).message?.slice(0, 120));
