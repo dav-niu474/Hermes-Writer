@@ -100,7 +100,9 @@ export async function generateChat(
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  const message = data.choices?.[0]?.message;
+  // GLM 4.7 returns content in "reasoning_content" instead of "content"
+  return message?.content || message?.reasoning_content || "";
 }
 
 // Streaming generation (returns a ReadableStream)

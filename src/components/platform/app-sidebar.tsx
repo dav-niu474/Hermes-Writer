@@ -36,7 +36,7 @@ const navItems: { view: ViewType; label: string; icon: React.ReactNode }[] = [
 ];
 
 export function AppSidebar() {
-  const { currentView, setCurrentView, selectedNovel, isAgentRunning, setIsCreatingNovel } = useAppStore();
+  const { currentView, setCurrentView, currentNovel, isAgentRunning, setIsCreatingNovel } = useAppStore();
 
   return (
     <Sidebar variant="inset" collapsible="icon">
@@ -82,7 +82,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {selectedNovel && (
+        {currentNovel && (
           <>
             <SidebarSeparator />
             <SidebarGroup>

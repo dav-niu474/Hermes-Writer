@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db, ensureDbInitialized } from "@/lib/db";
+import { ensureDbInitialized } from "@/lib/db";
 import { generateChat, generateChatStream, createStreamTransformer } from "@/lib/ai";
 import type { AgentType } from "@/lib/types";
 
@@ -92,7 +92,6 @@ function buildContextPrompt(
   if (novelInfo.characters?.length) context += `\n主要角色：\n${novelInfo.characters.join("\n")}\n`;
   if (novelInfo.chapterContent) context += `\n当前章节内容：\n${novelInfo.chapterContent}\n`;
 
-  // Include agent memories if provided
   if (memories && memories.length > 0) {
     context += `\n--- Agent 记忆 ---\n`;
     for (const mem of memories) {
@@ -107,7 +106,17 @@ function buildContextPrompt(
 // POST /api/agents/generate — Generation with optional streaming
 export async function POST(request: Request) {
   try {
-    await ensureDbInitialized();
+    // Try to init DB (non-fatal — AI works without DB)
+    await ensureDbInitialized().catch(() => {});
+
+    // Dynamic import db to get the real instance
+    let db: any;
+    try {
+      const dbModule = await import("@/lib/db");
+      db = dbModule.db;
+    } catch {
+      db = null;
+    }
 
     const body = await request.json();
     const {
@@ -132,9 +141,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "agentType and message are required" }, { status: 400 });
     }
 
-    // Create agent task record (skip if no valid novelId due to FK constraint)
+    // Create agent task record (optional — skip if no DB or no novelId)
     let agentTask: any = null;
-    if (novelId) {
+    if (db && novelId) {
       try {
         agentTask = await db.agentTask.create({
           data: {
@@ -182,12 +191,9 @@ export async function POST(request: Request) {
         const transformer = createStreamTransformer();
         const readableStream = streamBody.pipeThrough(transformer);
 
-        // Collect full output in background for task record
         let fullOutput = "";
         const reader = readableStream.getReader();
-        const chunks: string[] = [];
 
-        // We need to create a new stream since we can't both read and pipe
         const collectedStream = new ReadableStream<string>({
           async start(controller) {
             try {
@@ -195,13 +201,12 @@ export async function POST(request: Request) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 fullOutput += value;
-                chunks.push(value);
                 controller.enqueue(value);
               }
               controller.close();
 
-              // Update task record if it exists
-              if (agentTask?.id) {
+              // Update task record (non-critical)
+              if (agentTask?.id && db) {
                 try {
                   await db.agentTask.update({
                     where: { id: agentTask.id },
@@ -211,7 +216,7 @@ export async function POST(request: Request) {
               }
             } catch (err) {
               const errorMsg = err instanceof Error ? err.message : "Stream error";
-              if (agentTask?.id) {
+              if (agentTask?.id && db) {
                 try {
                   await db.agentTask.update({
                     where: { id: agentTask.id },
@@ -224,7 +229,6 @@ export async function POST(request: Request) {
           },
         });
 
-        // Convert string stream to Uint8Array stream
         const encoder = new TextEncoder();
         const byteStream = new ReadableStream<Uint8Array>({
           async start(controller) {
@@ -251,14 +255,7 @@ export async function POST(request: Request) {
         });
       } catch (aiError) {
         const errorMsg = aiError instanceof Error ? aiError.message : "Unknown error";
-        if (agentTask?.id) {
-          try {
-            await db.agentTask.update({
-              where: { id: agentTask.id },
-              data: { status: "failed", errorMessage: errorMsg },
-            });
-          } catch { /* non-critical */ }
-        }
+        console.error("[agent] Stream generation error:", errorMsg);
         return NextResponse.json({ status: "failed", error: errorMsg }, { status: 500 });
       }
     }
@@ -267,7 +264,7 @@ export async function POST(request: Request) {
     try {
       const output = await generateChat(messages, genOptions);
 
-      if (agentTask?.id) {
+      if (agentTask?.id && db) {
         try {
           await db.agentTask.update({
             where: { id: agentTask.id },
@@ -285,19 +282,12 @@ export async function POST(request: Request) {
       });
     } catch (aiError) {
       const errorMsg = aiError instanceof Error ? aiError.message : "Unknown error";
-      if (agentTask?.id) {
-        try {
-          await db.agentTask.update({
-            where: { id: agentTask.id },
-            data: { status: "failed", errorMessage: errorMsg },
-          });
-        } catch { /* non-critical */ }
-      }
+      console.error("[agent] Generation error:", errorMsg);
       return NextResponse.json({ status: "failed", error: errorMsg }, { status: 500 });
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("Agent generation error:", errorMsg, error);
+    console.error("[agent] Unhandled error:", errorMsg, error);
     return NextResponse.json({ error: "Failed to process agent request", details: errorMsg }, { status: 500 });
   }
 }

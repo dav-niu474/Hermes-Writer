@@ -1,30 +1,25 @@
 import { NextResponse } from "next/server";
-import { db, ensureDbInitialized, isPostgresAvailable } from "@/lib/db";
+import { ensureDbInitialized, isPostgresAvailable } from "@/lib/db";
 
 /**
  * POST /api/db/init
- * Initializes the database schema. For SQLite, tables are auto-created.
- * For PostgreSQL, runs CREATE TABLE IF NOT EXISTS statements.
+ * Initializes the database schema. Non-fatal — returns status even if DB is unavailable.
  */
 export async function POST() {
   try {
-    const results: string[] = [];
+    await ensureDbInitialized();
 
     if (!isPostgresAvailable) {
-      // SQLite mode: tables are already created in createSqliteDb()
-      // Just verify connectivity
-      await db.$queryRaw`SELECT 1`;
-      results.push("✓ SQLite database ready (tables auto-created on startup)");
+      // SQLite or no-op mode: tables are auto-created
       return NextResponse.json({
         success: true,
         mode: "sqlite",
-        message: "SQLite database ready — tables are auto-created",
-        details: results,
+        message: "Database ready (SQLite or stub mode)",
       });
     }
 
-    // PostgreSQL mode: run CREATE TABLE statements
-    await ensureDbInitialized();
+    // Dynamic import to get the real db instance
+    const { db } = await import("@/lib/db");
 
     const statements = [
       `CREATE TABLE IF NOT EXISTS "User" (
@@ -186,7 +181,6 @@ export async function POST() {
       )`,
       `DO $$ BEGIN ALTER TABLE "Branch" ADD CONSTRAINT "Branch_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
 
-      // Performance indexes
       `CREATE INDEX IF NOT EXISTS "Chapter_novelId_idx" ON "Chapter"("novelId")`,
       `CREATE INDEX IF NOT EXISTS "Character_novelId_idx" ON "Character"("novelId")`,
       `CREATE INDEX IF NOT EXISTS "WorldSetting_novelId_idx" ON "WorldSetting"("novelId")`,
@@ -197,20 +191,22 @@ export async function POST() {
       `CREATE INDEX IF NOT EXISTS "Branch_novelId_idx" ON "Branch"("novelId")`,
     ];
 
+    const results: string[] = [];
     for (const sql of statements) {
       try {
         await db.$executeRawUnsafe(sql);
         const tableName = sql.match(/"(\w+)"/)?.[1] || sql.slice(0, 30);
         results.push(`✓ ${tableName}`);
-      } catch (err: any) {
-        results.push(`✗ ${err.message?.slice(0, 80) || "error"}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "error";
+        results.push(`✗ ${msg.slice(0, 80)}`);
       }
     }
 
     return NextResponse.json({
       success: true,
       mode: "postgresql",
-      message: "PostgreSQL database schema initialized successfully",
+      message: "PostgreSQL database schema initialized",
       details: results,
     });
   } catch (error) {
@@ -230,20 +226,16 @@ export async function POST() {
  */
 export async function GET() {
   try {
-    await db.$queryRaw`SELECT 1`;
+    await ensureDbInitialized();
     return NextResponse.json({
       status: "ok",
       database: "connected",
       mode: isPostgresAvailable ? "postgresql" : "sqlite",
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      {
-        status: "error",
-        database: "disconnected",
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
+      { status: "error", database: "stub-mode", mode: "noop" },
+      { status: 200 }
     );
   }
 }
