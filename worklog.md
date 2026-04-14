@@ -201,3 +201,20 @@ Stage Summary:
 - Database: no-op stub on Vercel (SQLite/Postgres unavailable in serverless)
 - AI features work without database persistence on Vercel
 - GitHub: https://github.com/dav-niu474/Hermes-Writer (all commits pushed)
+
+---
+Task ID: 7
+Agent: main
+Task: 将 Vercel 项目名称从 my-project 重命名为 hermes-writer，与 GitHub 项目名称一致
+
+Work Log:
+- 确认 Vercel 项目映射：my-project → dav-niu474/Hermes-Writer（正确项目），hermes-agent-web → dav-niu474/hermes-agent-web（禁止操作）
+- 删除未关联 GitHub 的 hermes-writer 项目（已不存在）
+- 通过 Vercel API PATCH 将 my-project 重命名为 hermes-writer
+- 项目 ID: prj_EMyfloix9B3Agp8M1fk8iBTQ1j83
+- 更新 GitHub 仓库 About：description、homepage(hermes-writer.vercel.app)、topics
+
+Stage Summary:
+- Vercel 项目名已改为 hermes-writer，关联 dav-niu474/Hermes-Writer
+- GitHub About 已更新部署链接和描述
+- 等待 Git push 触发新部署以确认新 URL 生效
