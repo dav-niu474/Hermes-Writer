@@ -922,25 +922,26 @@ async function initDatabase(): Promise<any> {
       const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Test connection
-      const { error: testError } = await supabase.from("Novel").select("id").limit(1);
-      if (testError) {
+      const { error: testError } = await supabase.from("novel").select("id").limit(1);
+      // If table doesn't exist, we need to create it
+      if (testError && testError.message?.includes("Could not find the table")) {
+        console.log("[db] Tables don't exist, creating via Neon Pool...");
+        const { Pool } = await import("@neondatabase/serverless");
+        if (typeof globalThis.WebSocket === "undefined") {
+          try { const ws = await import("ws"); (globalThis as any).WebSocket = ws.default || ws; } catch { /* */ }
+        }
+        const ddlUrl = process.env.hermersWriter_POSTGRES_URL_NON_POOLING
+          || process.env.hermersWriter_POSTGRES_PRISMA_URL
+          || getPostgresUrl()!;
+        try {
+          const ddlPool = new Pool({ connectionString: ddlUrl, max: 1 });
+          await ensureSchema(ddlPool);
+          console.log("[db] Schema created successfully via Neon Pool");
+        } catch (ddlErr) {
+          console.error("[db] Schema creation failed:", (ddlErr as Error).message?.slice(0, 200));
+        }
+      } else if (testError) {
         throw new Error(`Supabase test failed: ${testError.message}`);
-      }
-
-      // Auto-create tables
-      const sqlExecutor: SqlExecutor = {
-        query: async (text: string, _params?: any[]) => {
-          const { data, error } = await supabase.rpc("exec_sql", { sql: text });
-          if (error) throw error;
-          return { rows: Array.isArray(data) ? data : [] };
-        },
-      };
-
-      // Try to create tables - if the RPC doesn't exist, tables are likely already created
-      try {
-        await ensureSchema(sqlExecutor);
-      } catch {
-        console.log("[db] Schema creation skipped (tables may already exist or RPC not available)");
       }
 
       const pgDb = createSupabaseDb(supabase);
