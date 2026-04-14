@@ -18,6 +18,9 @@ function isPostgresUrl(url: string): boolean {
 }
 
 function getPostgresUrl(): string | null {
+  // Prefer non-pooling URL for read-after-write consistency on Neon/Supabase
+  if (process.env.hermersWriter_POSTGRES_URL_NON_POOLING) return process.env.hermersWriter_POSTGRES_URL_NON_POOLING;
+  if (process.env.POSTGRES_URL_NON_POOLING) return process.env.POSTGRES_URL_NON_POOLING;
   if (process.env.hermersWriter_POSTGRES_PRISMA_URL) return process.env.hermersWriter_POSTGRES_PRISMA_URL;
   if (process.env.POSTGRES_PRISMA_URL) return process.env.POSTGRES_PRISMA_URL;
   if (process.env.DATABASE_URL && isPostgresUrl(process.env.DATABASE_URL) && !process.env.DATABASE_URL.includes("dummy")) {
