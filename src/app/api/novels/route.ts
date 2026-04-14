@@ -16,7 +16,7 @@ export async function GET() {
     return NextResponse.json(novels);
   } catch (error) {
     console.error("Failed to fetch novels:", error);
-    return NextResponse.json({ error: "Failed to fetch novels" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch novels", details: (error as Error).message }, { status: 500 });
   }
 }
 
@@ -43,6 +43,6 @@ export async function POST(request: Request) {
     return NextResponse.json(novel, { status: 201 });
   } catch (error) {
     console.error("Failed to create novel:", error);
-    return NextResponse.json({ error: "Failed to create novel" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to create novel", details: (error as Error).message }, { status: 500 });
   }
 }

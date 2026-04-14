@@ -100,6 +100,9 @@ async function initDatabase(): Promise<any> {
 
       const pool = new Pool({ connectionString: url });
       const adapter = new PrismaNeon(pool);
+
+      // PrismaClient still needs DATABASE_URL even with adapter
+      process.env.DATABASE_URL = url;
       const prisma = new PrismaClient({ adapter });
 
       // Auto-create tables on first connection
