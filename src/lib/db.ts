@@ -109,19 +109,19 @@ function createSupabaseDb(supabase: any) {
   }
 
   const tableNames = {
-    user: "User", novel: "Novel", chapter: "Chapter", character: "Character",
-    worldSetting: "WorldSetting", agentTask: "AgentTask", novelSpec: "NovelSpec",
-    specDelta: "SpecDelta", changeProposal: "ChangeProposal",
-    chapterSnapshot: "ChapterSnapshot", branch: "Branch",
+    user: "user", novel: "novel", chapter: "chapter", character: "character",
+    worldSetting: "world_setting", agentTask: "agent_task", novelSpec: "novel_spec",
+    specDelta: "spec_delta", changeProposal: "change_proposal",
+    chapterSnapshot: "chapter_snapshot", branch: "branch",
   };
 
   async function resolveIncludes(tableName: string, rows: Record<string, any>[], include: Record<string, any>) {
     if (!include || Object.keys(include).length === 0 || rows.length === 0) return rows;
     const tableMap: Record<string, string> = {
-      chapters: "Chapter", characters: "Character", worldSettings: "WorldSetting",
-      agentTasks: "AgentTask", specs: "NovelSpec", changeProposals: "ChangeProposal",
-      snapshots: "ChapterSnapshot", branches: "Branch", specDeltas: "SpecDelta",
-      novel: "Novel", chapter: "Chapter", proposal: "ChangeProposal", spec: "NovelSpec",
+      chapters: "chapter", characters: "character", worldSettings: "world_setting",
+      agentTasks: "agent_task", specs: "novel_spec", changeProposals: "change_proposal",
+      snapshots: "chapter_snapshot", branches: "branch", specDeltas: "spec_delta",
+      novel: "novel", chapter: "chapter", proposal: "change_proposal", spec: "novel_spec",
     };
     const fkBase = tableName.charAt(0).toLowerCase() + tableName.slice(1) + "Id";
 
@@ -779,105 +779,105 @@ function createPgDb(pool: SqlExecutor) {
 // ============================================================
 
 const SCHEMA_DDL = [
-  `CREATE TABLE IF NOT EXISTS "User" (
+  `CREATE TABLE IF NOT EXISTS "user" (
     "id" TEXT NOT NULL, "email" TEXT NOT NULL, "name" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "user_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "User" ADD CONSTRAINT "User_email_key" UNIQUE ("email"); EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE TABLE IF NOT EXISTS "Novel" (
+  `DO $$ BEGIN ALTER TABLE "user" ADD CONSTRAINT "user_email_key" UNIQUE ("email"); EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS "novel" (
     "id" TEXT NOT NULL, "title" TEXT NOT NULL, "description" TEXT NOT NULL DEFAULT '',
-    "genre" TEXT NOT NULL DEFAULT '', "coverImage" TEXT NOT NULL DEFAULT '',
-    "status" TEXT NOT NULL DEFAULT 'draft', "wordCount" INTEGER NOT NULL DEFAULT 0,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "Novel_pkey" PRIMARY KEY ("id")
+    "genre" TEXT NOT NULL DEFAULT '', "cover_image" TEXT NOT NULL DEFAULT '',
+    "status" TEXT NOT NULL DEFAULT 'draft', "word_count" INTEGER NOT NULL DEFAULT 0,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "novel_pkey" PRIMARY KEY ("id")
   )`,
-  `CREATE TABLE IF NOT EXISTS "Chapter" (
-    "id" TEXT NOT NULL, "novelId" TEXT NOT NULL, "title" TEXT NOT NULL DEFAULT '',
+  `CREATE TABLE IF NOT EXISTS "chapter" (
+    "id" TEXT NOT NULL, "novel_id" TEXT NOT NULL, "title" TEXT NOT NULL DEFAULT '',
     "content" TEXT NOT NULL DEFAULT '', "summary" TEXT NOT NULL DEFAULT '',
-    "chapterNumber" INTEGER NOT NULL DEFAULT 1, "status" TEXT NOT NULL DEFAULT 'draft',
-    "wordCount" INTEGER NOT NULL DEFAULT 0, "branchId" TEXT NOT NULL DEFAULT 'main',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "Chapter_pkey" PRIMARY KEY ("id")
+    "chapter_number" INTEGER NOT NULL DEFAULT 1, "status" TEXT NOT NULL DEFAULT 'draft',
+    "word_count" INTEGER NOT NULL DEFAULT 0, "branch_id" TEXT NOT NULL DEFAULT 'main',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "chapter_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "Chapter" ADD CONSTRAINT "Chapter_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE TABLE IF NOT EXISTS "Character" (
-    "id" TEXT NOT NULL, "novelId" TEXT NOT NULL, "name" TEXT NOT NULL,
+  `DO $$ BEGIN ALTER TABLE "chapter" ADD CONSTRAINT "chapter_novel_id_fkey" FOREIGN KEY ("novel_id") REFERENCES "novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS "character" (
+    "id" TEXT NOT NULL, "novel_id" TEXT NOT NULL, "name" TEXT NOT NULL,
     "role" TEXT NOT NULL DEFAULT 'supporting', "description" TEXT NOT NULL DEFAULT '',
     "personality" TEXT NOT NULL DEFAULT '', "appearance" TEXT NOT NULL DEFAULT '',
-    "backstory" TEXT NOT NULL DEFAULT '', "avatarUrl" TEXT NOT NULL DEFAULT '',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "Character_pkey" PRIMARY KEY ("id")
+    "backstory" TEXT NOT NULL DEFAULT '', "avatar_url" TEXT NOT NULL DEFAULT '',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "character_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "Character" ADD CONSTRAINT "Character_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE TABLE IF NOT EXISTS "WorldSetting" (
-    "id" TEXT NOT NULL, "novelId" TEXT NOT NULL, "name" TEXT NOT NULL,
+  `DO $$ BEGIN ALTER TABLE "character" ADD CONSTRAINT "character_novel_id_fkey" FOREIGN KEY ("novel_id") REFERENCES "novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS "world_setting" (
+    "id" TEXT NOT NULL, "novel_id" TEXT NOT NULL, "name" TEXT NOT NULL,
     "category" TEXT NOT NULL DEFAULT 'geography', "description" TEXT NOT NULL DEFAULT '',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "WorldSetting_pkey" PRIMARY KEY ("id")
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "world_setting_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "WorldSetting" ADD CONSTRAINT "WorldSetting_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE TABLE IF NOT EXISTS "AgentTask" (
-    "id" TEXT NOT NULL, "novelId" TEXT NOT NULL, "chapterId" TEXT,
-    "agentType" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'pending',
+  `DO $$ BEGIN ALTER TABLE "world_setting" ADD CONSTRAINT "world_setting_novel_id_fkey" FOREIGN KEY ("novel_id") REFERENCES "novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS "agent_task" (
+    "id" TEXT NOT NULL, "novel_id" TEXT NOT NULL, "chapter_id" TEXT,
+    "agent_type" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'pending',
     "input" TEXT NOT NULL DEFAULT '', "output" TEXT NOT NULL DEFAULT '',
-    "errorMessage" TEXT NOT NULL DEFAULT '',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "AgentTask_pkey" PRIMARY KEY ("id")
+    "error_message" TEXT NOT NULL DEFAULT '',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "agent_task_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "AgentTask" ADD CONSTRAINT "AgentTask_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `DO $$ BEGIN ALTER TABLE "AgentTask" ADD CONSTRAINT "AgentTask_chapterId_fkey" FOREIGN KEY ("chapterId") REFERENCES "Chapter"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE TABLE IF NOT EXISTS "ChangeProposal" (
-    "id" TEXT NOT NULL, "novelId" TEXT NOT NULL, "title" TEXT NOT NULL,
+  `DO $$ BEGIN ALTER TABLE "agent_task" ADD CONSTRAINT "agent_task_novel_id_fkey" FOREIGN KEY ("novel_id") REFERENCES "novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `DO $$ BEGIN ALTER TABLE "agent_task" ADD CONSTRAINT "agent_task_chapter_id_fkey" FOREIGN KEY ("chapter_id") REFERENCES "chapter"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS "change_proposal" (
+    "id" TEXT NOT NULL, "novel_id" TEXT NOT NULL, "title" TEXT NOT NULL,
     "description" TEXT NOT NULL DEFAULT '', "scope" TEXT NOT NULL DEFAULT '',
     "impact" TEXT NOT NULL DEFAULT '', "tasks" TEXT NOT NULL DEFAULT '',
-    "status" TEXT NOT NULL DEFAULT 'draft', "completedAt" TIMESTAMP(3), "archivedAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "ChangeProposal_pkey" PRIMARY KEY ("id")
+    "status" TEXT NOT NULL DEFAULT 'draft', "completed_at" TIMESTAMP(3), "archived_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "change_proposal_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "ChangeProposal" ADD CONSTRAINT "ChangeProposal_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE TABLE IF NOT EXISTS "NovelSpec" (
-    "id" TEXT NOT NULL, "novelId" TEXT NOT NULL, "category" TEXT NOT NULL DEFAULT 'outline',
+  `DO $$ BEGIN ALTER TABLE "change_proposal" ADD CONSTRAINT "change_proposal_novel_id_fkey" FOREIGN KEY ("novel_id") REFERENCES "novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS "novel_spec" (
+    "id" TEXT NOT NULL, "novel_id" TEXT NOT NULL, "category" TEXT NOT NULL DEFAULT 'outline',
     "title" TEXT NOT NULL, "content" TEXT NOT NULL DEFAULT '', "version" INTEGER NOT NULL DEFAULT 1,
-    "status" TEXT NOT NULL DEFAULT 'active', "parentSpecId" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "NovelSpec_pkey" PRIMARY KEY ("id")
+    "status" TEXT NOT NULL DEFAULT 'active', "parent_spec_id" TEXT,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "novel_spec_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "NovelSpec" ADD CONSTRAINT "NovelSpec_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE TABLE IF NOT EXISTS "SpecDelta" (
-    "id" TEXT NOT NULL, "specId" TEXT NOT NULL, "proposalId" TEXT,
+  `DO $$ BEGIN ALTER TABLE "novel_spec" ADD CONSTRAINT "novel_spec_novel_id_fkey" FOREIGN KEY ("novel_id") REFERENCES "novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS "spec_delta" (
+    "id" TEXT NOT NULL, "spec_id" TEXT NOT NULL, "proposal_id" TEXT,
     "operation" TEXT NOT NULL DEFAULT 'ADDED', "description" TEXT NOT NULL DEFAULT '',
-    "diffContent" TEXT NOT NULL DEFAULT '', "applied" BOOLEAN NOT NULL DEFAULT false,
-    "appliedAt" TIMESTAMP(3), "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "SpecDelta_pkey" PRIMARY KEY ("id")
+    "diff_content" TEXT NOT NULL DEFAULT '', "applied" BOOLEAN NOT NULL DEFAULT false,
+    "applied_at" TIMESTAMP(3), "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "spec_delta_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "SpecDelta" ADD CONSTRAINT "SpecDelta_specId_fkey" FOREIGN KEY ("specId") REFERENCES "NovelSpec"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `DO $$ BEGIN ALTER TABLE "SpecDelta" ADD CONSTRAINT "SpecDelta_proposalId_fkey" FOREIGN KEY ("proposalId") REFERENCES "ChangeProposal"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE TABLE IF NOT EXISTS "ChapterSnapshot" (
-    "id" TEXT NOT NULL, "novelId" TEXT NOT NULL, "chapterId" TEXT,
-    "chapterNumber" INTEGER NOT NULL DEFAULT 0, "snapshotType" TEXT NOT NULL DEFAULT 'manual',
-    "label" TEXT NOT NULL DEFAULT '', "chapterContent" TEXT NOT NULL DEFAULT '',
-    "specSnapshot" TEXT NOT NULL DEFAULT '', "metadata" TEXT NOT NULL DEFAULT '',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "ChapterSnapshot_pkey" PRIMARY KEY ("id")
+  `DO $$ BEGIN ALTER TABLE "spec_delta" ADD CONSTRAINT "spec_delta_spec_id_fkey" FOREIGN KEY ("spec_id") REFERENCES "novel_spec"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `DO $$ BEGIN ALTER TABLE "spec_delta" ADD CONSTRAINT "spec_delta_proposal_id_fkey" FOREIGN KEY ("proposal_id") REFERENCES "change_proposal"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS "chapter_snapshot" (
+    "id" TEXT NOT NULL, "novel_id" TEXT NOT NULL, "chapter_id" TEXT,
+    "chapter_number" INTEGER NOT NULL DEFAULT 0, "snapshot_type" TEXT NOT NULL DEFAULT 'manual',
+    "label" TEXT NOT NULL DEFAULT '', "chapter_content" TEXT NOT NULL DEFAULT '',
+    "spec_snapshot" TEXT NOT NULL DEFAULT '', "metadata" TEXT NOT NULL DEFAULT '',
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "chapter_snapshot_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "ChapterSnapshot" ADD CONSTRAINT "ChapterSnapshot_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE TABLE IF NOT EXISTS "Branch" (
-    "id" TEXT NOT NULL, "novelId" TEXT NOT NULL, "name" TEXT NOT NULL DEFAULT 'main',
-    "description" TEXT NOT NULL DEFAULT '', "parentBranchId" TEXT, "basedOnSnapshotId" TEXT,
+  `DO $$ BEGIN ALTER TABLE "chapter_snapshot" ADD CONSTRAINT "chapter_snapshot_novel_id_fkey" FOREIGN KEY ("novel_id") REFERENCES "novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE TABLE IF NOT EXISTS "branch" (
+    "id" TEXT NOT NULL, "novel_id" TEXT NOT NULL, "name" TEXT NOT NULL DEFAULT 'main',
+    "description" TEXT NOT NULL DEFAULT '', "parent_branch_id" TEXT, "based_on_snapshot_id" TEXT,
     "status" TEXT NOT NULL DEFAULT 'active',
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "Branch_pkey" PRIMARY KEY ("id")
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updated_at" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "branch_pkey" PRIMARY KEY ("id")
   )`,
-  `DO $$ BEGIN ALTER TABLE "Branch" ADD CONSTRAINT "Branch_novelId_fkey" FOREIGN KEY ("novelId") REFERENCES "Novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
-  `CREATE INDEX IF NOT EXISTS "Chapter_novelId_idx" ON "Chapter"("novelId")`,
-  `CREATE INDEX IF NOT EXISTS "Character_novelId_idx" ON "Character"("novelId")`,
-  `CREATE INDEX IF NOT EXISTS "WorldSetting_novelId_idx" ON "WorldSetting"("novelId")`,
-  `CREATE INDEX IF NOT EXISTS "AgentTask_novelId_idx" ON "AgentTask"("novelId")`,
-  `CREATE INDEX IF NOT EXISTS "NovelSpec_novelId_idx" ON "NovelSpec"("novelId")`,
-  `CREATE INDEX IF NOT EXISTS "ChangeProposal_novelId_idx" ON "ChangeProposal"("novelId")`,
-  `CREATE INDEX IF NOT EXISTS "ChapterSnapshot_novelId_idx" ON "ChapterSnapshot"("novelId")`,
-  `CREATE INDEX IF NOT EXISTS "Branch_novelId_idx" ON "Branch"("novelId")`,
+  `DO $$ BEGIN ALTER TABLE "branch" ADD CONSTRAINT "branch_novel_id_fkey" FOREIGN KEY ("novel_id") REFERENCES "novel"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$`,
+  `CREATE INDEX IF NOT EXISTS "chapter_novel_id_idx" ON "chapter"("novel_id")`,
+  `CREATE INDEX IF NOT EXISTS "character_novel_id_idx" ON "character"("novel_id")`,
+  `CREATE INDEX IF NOT EXISTS "world_setting_novel_id_idx" ON "world_setting"("novel_id")`,
+  `CREATE INDEX IF NOT EXISTS "agent_task_novel_id_idx" ON "agent_task"("novel_id")`,
+  `CREATE INDEX IF NOT EXISTS "novel_spec_novel_id_idx" ON "novel_spec"("novel_id")`,
+  `CREATE INDEX IF NOT EXISTS "change_proposal_novel_id_idx" ON "change_proposal"("novel_id")`,
+  `CREATE INDEX IF NOT EXISTS "chapter_snapshot_novel_id_idx" ON "chapter_snapshot"("novel_id")`,
+  `CREATE INDEX IF NOT EXISTS "branch_novel_id_idx" ON "branch"("novel_id")`,
 ];
 
 async function ensureSchema(pool: SqlExecutor): Promise<void> {
