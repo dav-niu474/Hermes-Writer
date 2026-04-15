@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db, ensureDbInitialized } from "@/lib/db";
 
 export async function POST(request: Request) {
@@ -27,5 +27,23 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Failed to create character:", error);
     return NextResponse.json({ error: "Failed to create character" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    await ensureDbInitialized();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ error: "id is required" }, { status: 400 });
+    }
+
+    await db.character.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Failed to delete character:", error);
+    return NextResponse.json({ error: "Failed to delete character" }, { status: 500 });
   }
 }

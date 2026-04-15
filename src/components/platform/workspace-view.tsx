@@ -1,28 +1,28 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useAppStore } from "@/lib/store";
+import { useAppStore, type WorkspaceTab } from "@/lib/store";
 import {
   AGENT_DEFINITIONS,
   CHAPTER_STATUS_MAP,
-  type LLMModel,
   type Chapter,
   type Character,
   type WorldSetting,
   type AgentType,
   type WorldSettingCategory,
 } from "@/lib/types";
-import { DEFAULT_AGENT_CONFIGS } from "@/lib/types";
 import { AVAILABLE_MODELS } from "@/lib/ai";
 import { OrchestrationPanel } from "@/components/platform/orchestration-panel";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OutlineCanvas } from "@/components/workspace/outline-canvas";
+import { CharacterArchive } from "@/components/workspace/character-archive";
+import { WorldviewGallery } from "@/components/workspace/worldview-gallery";
+import { VersionCenter } from "@/components/workspace/version-center";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
@@ -49,13 +49,11 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import {
   Plus,
   Trash2,
   Bot,
-  GitBranch,
   Send,
   Loader2,
   Sparkles,
@@ -65,23 +63,30 @@ import {
   ArrowLeft,
   Download,
   FileText,
-  FileDown,
   Globe,
   Users,
   History,
   BarChart3,
-  Settings,
-  ChevronLeft,
-  ChevronDown,
   CheckCircle2,
-  XCircle,
-  Clock,
   Brain,
   Map,
   Copy,
+  ChevronDown,
+  GitBranch,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { VersionPanel } from "@/components/platform/version-panel";
+
+// ===== Creative Layer Tab Definitions =====
+const CREATIVE_TABS: { id: WorkspaceTab; label: string; icon: React.ReactNode; color: string }[] = [
+  { id: "outline", label: "大纲", icon: <Map className="size-3.5" />, color: "text-amber-500" },
+  { id: "characters", label: "角色", icon: <Users className="size-3.5" />, color: "text-rose-500" },
+  { id: "worldview", label: "世界观", icon: <Globe className="size-3.5" />, color: "text-orange-500" },
+];
+
+const ENGINEERING_TAB: { id: WorkspaceTab; label: string; icon: React.ReactNode; color: string } = {
+  id: "version", label: "版本管理", icon: <GitBranch className="size-3.5" />, color: "text-teal-500"
+};
 
 export function WorkspaceView() {
   const {
@@ -102,6 +107,10 @@ export function WorkspaceView() {
     setIsCreatingNovel,
     setCurrentView,
     agentConfigs,
+    workspaceTab,
+    setWorkspaceTab,
+    engineeringCollapsed,
+    setEngineeringCollapsed,
   } = useAppStore();
 
   const [loading, setLoading] = useState(true);
@@ -121,15 +130,10 @@ export function WorkspaceView() {
   const [showCharacterDialog, setShowCharacterDialog] = useState(false);
   const [showWorldDialog, setShowWorldDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [showTaskHistory, setShowTaskHistory] = useState(false);
   const [showStatsPanel, setShowStatsPanel] = useState(false);
   const [charForm, setCharForm] = useState({ name: "", role: "supporting" as const, description: "", personality: "", appearance: "", backstory: "" });
   const [worldForm, setWorldForm] = useState({ name: "", category: "geography" as WorldSettingCategory, description: "" });
-  const [leftTab, setLeftTab] = useState<"outline" | "chapters" | "characters" | "worldview" | "version">("chapters");
   const [specs, setSpecs] = useState<any[]>([]);
-  const [selectedSpec, setSelectedSpec] = useState<any>(null);
-  const [specContent, setSpecContent] = useState("");
-  const [agentTasks, setAgentTasks] = useState<any[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const aiEndRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -182,17 +186,7 @@ export function WorkspaceView() {
     aiEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [aiMessages, streamingText]);
 
-  // Load specs for outline tab
-  useEffect(() => {
-    if (leftTab === "outline" && selectedNovelId) {
-      fetch(`/api/specs?novelId=${selectedNovelId}`)
-        .then(res => res.ok ? res.json() : [])
-        .then(setSpecs)
-        .catch(() => {});
-    }
-  }, [leftTab, selectedNovelId]);
-
-  // Auto-save
+  // Auto-save chapter
   async function saveChapter() {
     if (!selectedChapterId) return;
     setSaving(true);
@@ -244,29 +238,7 @@ export function WorkspaceView() {
     } catch (e) { console.error("Failed:", e); }
   }
 
-  // World settings
-  async function saveWorldSetting() {
-    if (!selectedNovelId || !worldForm.name.trim()) return;
-    try {
-      await fetch("/api/world-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...worldForm, novelId: selectedNovelId }),
-      });
-      setShowWorldDialog(false);
-      setWorldForm({ name: "", category: "geography", description: "" });
-      loadNovelData();
-    } catch (e) { console.error("Failed:", e); }
-  }
-
-  async function deleteWorldSetting(id: string) {
-    try {
-      await fetch(`/api/world-settings?id=${id}`, { method: "DELETE" });
-      loadNovelData();
-    } catch (e) { console.error("Failed:", e); }
-  }
-
-  // Character
+  // Character CRUD
   async function saveCharacter() {
     if (!selectedNovelId || !charForm.name.trim()) return;
     try {
@@ -277,6 +249,21 @@ export function WorkspaceView() {
       });
       setShowCharacterDialog(false);
       setCharForm({ name: "", role: "supporting", description: "", personality: "", appearance: "", backstory: "" });
+      loadNovelData();
+    } catch (e) { console.error("Failed:", e); }
+  }
+
+  // World settings CRUD
+  async function saveWorldSetting() {
+    if (!selectedNovelId || !worldForm.name.trim()) return;
+    try {
+      await fetch("/api/world-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...worldForm, novelId: selectedNovelId }),
+      });
+      setShowWorldDialog(false);
+      setWorldForm({ name: "", category: "geography", description: "" });
       loadNovelData();
     } catch (e) { console.error("Failed:", e); }
   }
@@ -292,33 +279,18 @@ export function WorkspaceView() {
     setShowExportDialog(false);
   }
 
-  // Agent tasks
-  async function loadAgentTasks() {
-    if (!selectedNovelId) return;
-    try {
-      const res = await fetch(`/api/agent-tasks?novelId=${selectedNovelId}`);
-      if (res.ok) setAgentTasks(await res.json());
-    } catch (e) { console.error("Failed:", e); }
-  }
-
   // Agent interaction with streaming
   async function sendToAgent() {
     if (!aiMessage.trim() || isAgentRunning) return;
     setIsAgentRunning(true);
-
     const userMsg = aiMessage;
     setAiMessage("");
     setAiMessages((prev) => [...prev, { role: "user", content: userMsg }]);
     setStreamingText("");
-
-    // Add placeholder for assistant response
-    const assistantIdx = aiMessages.length + 1;
     setAiMessages((prev) => [...prev, { role: "assistant", content: "", agentType: selectedAgent }]);
-
     abortControllerRef.current = new AbortController();
 
     try {
-      // Build effective system prompt from agent config
       const agentConfig = agentConfigs[selectedAgent];
       const effectiveSystemPrompt = agentConfig
         ? agentConfig.systemPrompt + agentConfig.skills.filter((s) => s.enabled).map((s) => s.prompt).join("")
@@ -363,7 +335,6 @@ export function WorkspaceView() {
 
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No reader");
-
       const decoder = new TextDecoder();
       let fullText = "";
 
@@ -373,17 +344,13 @@ export function WorkspaceView() {
         const chunk = decoder.decode(value, { stream: true });
         fullText += chunk;
         setStreamingText(fullText);
-
-        // Update the assistant message incrementally
         setAiMessages((prev) => {
           const updated = [...prev];
           updated[updated.length - 1] = { role: "assistant", content: fullText, agentType: selectedAgent };
           return updated;
         });
       }
-
       setStreamingText("");
-      loadAgentTasks();
     } catch (e: any) {
       if (e.name !== "AbortError") {
         setAiMessages((prev) => {
@@ -397,12 +364,6 @@ export function WorkspaceView() {
     } finally {
       setIsAgentRunning(false);
       abortControllerRef.current = null;
-    }
-  }
-
-  function stopGeneration() {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
     }
   }
 
@@ -443,9 +404,15 @@ export function WorkspaceView() {
   const currentChapter = chapters.find((c) => c.id === selectedChapterId);
   const wordCount = chapterContent.length;
 
+  // Determine what to show in main content area
+  // If a chapter is selected AND the workspace tab is a creative tab, show chapter editor with option to see full view
+  // Otherwise show the full workspace view for the selected tab
+  const showFullPageView = workspaceTab === "version";
+  const showChapterEditor = selectedChapterId && !showFullPageView;
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-      {/* Top Bar */}
+      {/* ===== Top Bar ===== */}
       <div className="flex items-center justify-between border-b px-3 py-1.5 flex-shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-2 min-w-0">
           <Button variant="ghost" size="icon" className="size-8 flex-shrink-0" onClick={() => setCurrentView("novels")}>
@@ -453,21 +420,15 @@ export function WorkspaceView() {
           </Button>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold truncate">{currentNovel?.title}</h2>
-            {currentChapter && (
-              <p className="text-[11px] text-muted-foreground truncate">{currentChapter.title} · {wordCount.toLocaleString()} 字</p>
-            )}
+            <p className="text-[11px] text-muted-foreground truncate">
+              {currentChapter && !showFullPageView
+                ? `${currentChapter.title} · ${wordCount.toLocaleString()} 字`
+                : `${chapters.length} 章 · ${totalWords.toLocaleString()} 字 · ${characters.length} 角色`}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => { loadAgentTasks(); setShowTaskHistory(true); }}>
-                  <History className="size-3.5" /><span className="hidden sm:inline">任务记录</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>查看 Agent 任务历史</TooltipContent>
-            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={() => setShowExportDialog(true)}>
@@ -491,16 +452,18 @@ export function WorkspaceView() {
                   <span className="hidden sm:inline">{showAgentPanel && agentMode === "orchestrate" ? "协同编排" : "AI 助手"}</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>打开 AI 助手（支持协同编排模式）</TooltipContent>
+              <TooltipContent>打开 AI 助手</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={saveChapter} disabled={saving || !selectedChapterId}>
-            <Save className="size-3.5" /><span className="hidden sm:inline">{saving ? "保存中" : "保存"}</span>
-          </Button>
+          {!showFullPageView && (
+            <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={saveChapter} disabled={saving || !selectedChapterId}>
+              <Save className="size-3.5" /><span className="hidden sm:inline">{saving ? "保存中" : "保存"}</span>
+            </Button>
+          )}
         </div>
       </div>
 
-      {/* Stats Bar */}
+      {/* ===== Stats Bar ===== */}
       {showStatsPanel && (
         <div className="flex items-center gap-4 px-4 py-2 border-b bg-muted/30 text-xs flex-shrink-0 overflow-x-auto">
           <div className="flex items-center gap-1.5"><FileText className="size-3.5 text-muted-foreground" /><span>{chapters.length} 章</span></div>
@@ -514,422 +477,417 @@ export function WorkspaceView() {
         </div>
       )}
 
-      {/* Main Content */}
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Left Sidebar */}
-        <ResizablePanel defaultSize={18} minSize={14} maxSize={28}>
-          <div className="flex flex-col h-full border-r">
-            <div className="flex border-b flex-shrink-0">
-              {(["outline", "chapters", "characters", "worldview", "version"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  className={cn("flex-1 px-2 py-2 text-[11px] font-medium transition-colors", leftTab === tab ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground")}
-                  onClick={() => setLeftTab(tab)}
-                >
-                  {tab === "outline" ? "大纲" : tab === "chapters" ? "章节" : tab === "characters" ? "角色" : tab === "worldview" ? "世界" : "版本"}
-                </button>
-              ))}
-            </div>
+      {/* ===== Full Page View (Version Center) ===== */}
+      {showFullPageView && (
+        <div className="flex-1 overflow-hidden">
+          <VersionCenter novelId={selectedNovelId} />
+        </div>
+      )}
 
-            <ScrollArea className="flex-1">
-              {leftTab === "outline" && (
-                <div className="p-1.5 space-y-1">
-                  {selectedSpec ? (
-                    <div className="space-y-2">
-                      <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground text-xs h-7" onClick={() => { setSelectedSpec(null); setSpecContent(""); }}>
-                        <ChevronLeft className="size-3 mr-1" />返回大纲列表
-                      </Button>
-                      <div className="rounded-lg border p-2">
-                        <p className="text-xs font-medium mb-1">{selectedSpec.title}</p>
-                        <Badge variant="secondary" className="text-[9px]">v{selectedSpec.version}</Badge>
+      {/* ===== Main Content with Double-Layer Navigation ===== */}
+      {!showFullPageView && (
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          {/* ===== Left Sidebar: Double-Layer Navigation ===== */}
+          <ResizablePanel defaultSize={18} minSize={14} maxSize={28}>
+            <div className="flex flex-col h-full border-r">
+              {/* Creative Layer Tabs */}
+              <div className="flex-shrink-0">
+                <div className="px-2 py-1.5">
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider px-1">创作层</p>
+                </div>
+                <div className="flex gap-0.5 px-1.5 pb-1">
+                  {CREATIVE_TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      className={cn(
+                        "flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium transition-all",
+                        workspaceTab === tab.id
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      )}
+                      onClick={() => setWorkspaceTab(tab.id)}
+                    >
+                      {tab.icon}
+                      <span>{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Left Content: Context-Aware List */}
+              <ScrollArea className="flex-1">
+                {/* Outline tab: show spec list summary */}
+                {workspaceTab === "outline" && (
+                  <div className="p-1.5 space-y-1">
+                    {specs.length === 0 ? (
+                      <div className="text-center py-4 text-muted-foreground text-xs">
+                        <Map className="size-5 mx-auto mb-1.5 text-amber-400" />
+                        <p className="font-medium">暂无大纲</p>
+                        <p className="text-[10px] mt-0.5">使用 AI 自动生成</p>
                       </div>
-                      <Textarea
-                        value={specContent}
-                        onChange={(e) => setSpecContent(e.target.value)}
-                        className="min-h-[200px] text-xs font-mono leading-relaxed"
-                        placeholder="大纲内容..."
-                      />
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="outline" className="h-6 text-[10px] flex-1" onClick={() => {
-                          if (selectedSpec) {
-                            fetch(`/api/specs/${selectedSpec.id}`, {
-                              method: "PUT",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ content: specContent }),
-                            }).then(() => {
-                              fetch(`/api/specs?novelId=${selectedNovelId}`).then(r => r.ok ? r.json() : []).then(setSpecs);
-                            });
-                          }
-                        }}>
-                          <Save className="size-3 mr-1" />保存
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => {
-                          navigator.clipboard.writeText(specContent);
-                        }}>
-                          <Copy className="size-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {specs.filter(s => s.category === "outline").length === 0 ? (
-                        <div className="text-center py-6 text-muted-foreground text-xs">
-                          <Map className="size-6 mx-auto mb-2 text-amber-400" />
-                          <p className="font-medium">暂无大纲</p>
-                          <p className="text-[10px] mt-1">使用 Hermes 协同编排自动生成</p>
-                        </div>
-                      ) : (
-                        specs.filter(s => s.category === "outline").map(spec => (
-                          <div key={spec.id} className="rounded-md px-2 py-2 hover:bg-muted cursor-pointer transition-colors" onClick={() => { setSelectedSpec(spec); setSpecContent(spec.content); }}>
-                            <div className="flex items-center gap-2">
-                              <div className="size-5 rounded bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-                                <Map className="size-3 text-amber-500" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium truncate">{spec.title}</p>
-                                <p className="text-[9px] text-muted-foreground">v{spec.version} · {spec.content.length} 字</p>
-                              </div>
+                    ) : (
+                      specs.filter(s => s.category === "outline").map((spec) => (
+                        <div key={spec.id} className="rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer transition-colors" onClick={() => {}}>
+                          <div className="flex items-center gap-2">
+                            <div className="size-5 rounded bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                              <Map className="size-3 text-amber-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate">{spec.title}</p>
+                              <p className="text-[9px] text-muted-foreground">v{spec.version} · {spec.content?.length || 0} 字</p>
                             </div>
                           </div>
-                        ))
-                      )}
-                      {specs.filter(s => s.category !== "outline").length > 0 && (
-                        <>
-                          <Separator className="my-1" />
-                          <p className="text-[10px] text-muted-foreground px-2 font-medium">其他规格文档</p>
-                          {specs.filter(s => s.category !== "outline").map(spec => (
-                            <div key={spec.id} className="rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer transition-colors" onClick={() => { setSelectedSpec(spec); setSpecContent(spec.content); }}>
-                              <div className="flex items-center gap-2">
-                                <div className="size-5 rounded bg-muted/50 flex items-center justify-center flex-shrink-0">
-                                  <FileText className="size-3 text-muted-foreground" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11px] font-medium truncate">{spec.title}</p>
-                                  <p className="text-[9px] text-muted-foreground">{spec.category === "characters" ? "角色" : spec.category === "worldbuilding" ? "世界观" : spec.category === "style" ? "风格" : spec.category} · v{spec.version}</p>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              {leftTab === "chapters" && (
-                <div className="p-1.5 space-y-0.5">
-                  {chapters.map((ch) => (
-                    <div key={ch.id} className={cn("group flex items-center gap-1 rounded-md px-2 py-1 text-xs cursor-pointer transition-colors", selectedChapterId === ch.id ? "bg-primary/10 text-primary" : "hover:bg-muted")} onClick={() => setSelectedChapter(ch.id)}>
-                      <span className="text-muted-foreground w-5 flex-shrink-0 text-[10px]">{ch.chapterNumber}.</span>
-                      <span className="flex-1 truncate">{ch.title}</span>
-                      <span className="text-[9px] text-muted-foreground flex-shrink-0">{ch.wordCount}</span>
-                      <Button variant="ghost" size="icon" className="size-5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" onClick={(e) => { e.stopPropagation(); deleteChapter(ch.id); }}>
-                        <Trash2 className="size-2.5" />
-                      </Button>
-                    </div>
-                  ))}
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground text-xs h-7" onClick={() => setCreatingChapter(true)}>
-                    <Plus className="size-3 mr-1" />添加章节
-                  </Button>
-                </div>
-              )}
-
-              {leftTab === "characters" && (
-                <div className="p-1.5 space-y-1">
-                  {characters.map((char) => (
-                    <div key={char.id} className="rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer transition-colors" onClick={() => { setSelectedAgent("character"); setShowAgentPanel(true); setAiMessage(`分析角色「${char.name}」的设定和发展建议`); }}>
-                      <div className="flex items-center gap-2">
-                        <div className="size-5 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-white text-[9px] font-medium flex-shrink-0">{char.name[0]}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-[11px] truncate">{char.name}</p>
-                          <p className="text-[9px] text-muted-foreground">{char.role}</p>
                         </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {/* Characters tab: show character list */}
+                {workspaceTab === "characters" && (
+                  <div className="p-1.5 space-y-1">
+                    {characters.length === 0 ? (
+                      <div className="text-center py-4 text-muted-foreground text-xs">
+                        <Users className="size-5 mx-auto mb-1.5 text-rose-400" />
+                        <p className="font-medium">暂无角色</p>
+                        <Button size="sm" variant="ghost" className="mt-2 h-6 text-[10px] gap-1" onClick={() => setShowCharacterDialog(true)}>
+                          <Plus className="size-3" />添加角色
+                        </Button>
                       </div>
-                    </div>
-                  ))}
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground text-xs h-7" onClick={() => setShowCharacterDialog(true)}>
-                    <Plus className="size-3 mr-1" />添加角色
+                    ) : (
+                      characters.map((char) => (
+                        <div key={char.id} className="rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer transition-colors">
+                          <div className="flex items-center gap-2">
+                            <div className="size-5 rounded-full bg-gradient-to-br from-rose-400 to-pink-500 flex items-center justify-center text-white text-[9px] font-medium flex-shrink-0">
+                              {char.name[0]}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-[11px] truncate">{char.name}</p>
+                              <p className="text-[9px] text-muted-foreground">
+                                {char.role === "protagonist" ? "主角" : char.role === "antagonist" ? "反派" : char.role === "supporting" ? "配角" : "龙套"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground text-xs h-7" onClick={() => setShowCharacterDialog(true)}>
+                      <Plus className="size-3 mr-1" />添加角色
+                    </Button>
+                  </div>
+                )}
+
+                {/* Worldview tab: show settings list */}
+                {workspaceTab === "worldview" && (
+                  <div className="p-1.5 space-y-1">
+                    {worldSettings.length === 0 ? (
+                      <div className="text-center py-4 text-muted-foreground text-xs">
+                        <Globe className="size-5 mx-auto mb-1.5 text-orange-400" />
+                        <p className="font-medium">暂无设定</p>
+                        <Button size="sm" variant="ghost" className="mt-2 h-6 text-[10px] gap-1" onClick={() => setShowWorldDialog(true)}>
+                          <Plus className="size-3" />添加设定
+                        </Button>
+                      </div>
+                    ) : (
+                      worldSettings.map((ws) => (
+                        <div key={ws.id} className="rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer transition-colors">
+                          <div className="flex items-center gap-2">
+                            <div className="size-5 rounded bg-orange-50 dark:bg-orange-900/30 flex items-center justify-center flex-shrink-0">
+                              <Globe className="size-3 text-orange-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-[11px] truncate">{ws.name}</p>
+                              <p className="text-[9px] text-muted-foreground truncate">
+                                {ws.category === "geography" ? "地理" : ws.category === "history" ? "历史" : ws.category === "culture" ? "文化" : ws.category === "magic" ? "魔法" : ws.category === "technology" ? "科技" : "其他"}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground text-xs h-7" onClick={() => setShowWorldDialog(true)}>
+                      <Plus className="size-3 mr-1" />添加设定
+                    </Button>
+                  </div>
+                )}
+              </ScrollArea>
+
+              {/* Engineering Layer (Collapsible) */}
+              <div className="flex-shrink-0 border-t">
+                <button
+                  className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => {
+                    if (engineeringCollapsed) {
+                      setEngineeringCollapsed(false);
+                      setWorkspaceTab("version");
+                    } else {
+                      setEngineeringCollapsed(true);
+                    }
+                  }}
+                >
+                  <ChevronDown className={cn("size-3 transition-transform", engineeringCollapsed ? "-rotate-90" : "")} />
+                  <GitBranch className={cn("size-3.5", ENGINEERING_TAB.color)} />
+                  <span>{ENGINEERING_TAB.label}</span>
+                  <Layers className="size-3 ml-auto text-muted-foreground/50" />
+                </button>
+              </div>
+
+              {/* Chapter List (Always visible at bottom) */}
+              <div className="flex-shrink-0 border-t">
+                <div className="flex items-center justify-between px-3 py-1.5">
+                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">章节 ({chapters.length})</p>
+                  <Button variant="ghost" size="icon" className="size-5" onClick={() => setCreatingChapter(true)}>
+                    <Plus className="size-3" />
                   </Button>
                 </div>
-              )}
-
-              {leftTab === "worldview" && (
-                <div className="p-1.5 space-y-1" key="worldview-content">
-                  {(worldSettings || []).map((ws: WorldSetting) => (
-                    <div key={ws.id} className="group rounded-md px-2 py-1.5 hover:bg-muted cursor-pointer transition-colors" onClick={() => { setSelectedAgent("worldbuilder"); setShowAgentPanel(true); setAiMessage(`完善「${ws.name}」的设定：${ws.description}`); }}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-[11px] truncate">{ws.name}</p>
-                          <p className="text-[9px] text-muted-foreground truncate">{ws.description || ws.category}</p>
-                        </div>
-                        <Button variant="ghost" size="icon" className="size-5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" onClick={(e) => { e.stopPropagation(); deleteWorldSetting(ws.id); }}>
+                <ScrollArea className="max-h-48">
+                  <div className="p-1.5 space-y-0.5">
+                    {chapters.map((ch) => (
+                      <div
+                        key={ch.id}
+                        className={cn(
+                          "group flex items-center gap-1 rounded-md px-2 py-1 text-xs cursor-pointer transition-colors",
+                          selectedChapterId === ch.id ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                        )}
+                        onClick={() => setSelectedChapter(ch.id)}
+                      >
+                        <span className="text-muted-foreground w-5 flex-shrink-0 text-[10px]">{ch.chapterNumber}.</span>
+                        <span className="flex-1 truncate">{ch.title}</span>
+                        <span className="text-[9px] text-muted-foreground flex-shrink-0">{ch.wordCount}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                          onClick={(e) => { e.stopPropagation(); deleteChapter(ch.id); }}
+                        >
                           <Trash2 className="size-2.5" />
                         </Button>
                       </div>
-                    </div>
-                  ))}
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground text-xs h-7" onClick={() => setShowWorldDialog(true)}>
-                    <Plus className="size-3 mr-1" />添加设定
+                    ))}
+                    {chapters.length === 0 && (
+                      <p className="text-center text-[10px] text-muted-foreground py-3">暂无章节</p>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle withHandle />
+
+          {/* ===== Main Content Area: Context-Aware ===== */}
+          <ResizablePanel defaultSize={showAgentPanel ? 48 : 82} minSize={25}>
+            <div className="flex flex-col h-full">
+              {currentChapter ? (
+                <>
+                  {/* Chapter Editor Header */}
+                  <div className="flex items-center gap-2 px-4 py-1.5 border-b flex-shrink-0">
+                    <Input value={chapterTitle} onChange={(e) => setChapterTitle(e.target.value)} className="text-base font-semibold border-none shadow-none px-0 h-auto focus-visible:ring-0 flex-1" placeholder="章节标题" onBlur={saveChapter} />
+                    <Select value={chapterStatus} onValueChange={(v) => { setChapterStatus(v); setTimeout(saveChapter, 100); }}>
+                      <SelectTrigger className="w-20 h-7 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(CHAPTER_STATUS_MAP).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Chapter Editor Body */}
+                  <div className="flex-1 overflow-y-auto p-4 md:p-8">
+                    <Textarea value={chapterContent} onChange={(e) => handleContentChange(e.target.value)} className="min-h-full w-full resize-none border-none shadow-none bg-transparent text-sm leading-relaxed focus-visible:ring-0 placeholder:text-muted-foreground/50" placeholder="开始写作..." rows={30} />
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-1 border-t text-[11px] text-muted-foreground flex-shrink-0">
+                    <span>{wordCount.toLocaleString()} 字</span>
+                    <span>{saving ? "保存中..." : "自动保存"}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                  <BookOpen className="size-10" />
+                  <p className="text-sm">选择或创建一个章节开始写作</p>
+                  <Button size="sm" variant="outline" onClick={() => setCreatingChapter(true)}>
+                    <Plus className="size-4 mr-1.5" />创建新章节
                   </Button>
                 </div>
               )}
+            </div>
+          </ResizablePanel>
 
-              {leftTab === "version" && (
-                <VersionPanel />
-              )}
-            </ScrollArea>
-          </div>
-        </ResizablePanel>
-
-        <ResizableHandle withHandle />
-
-        {/* Editor */}
-        <ResizablePanel defaultSize={showAgentPanel ? 48 : 82} minSize={25}>
-          <div className="flex flex-col h-full">
-            {currentChapter ? (
-              <>
-                <div className="flex items-center gap-2 px-4 py-1.5 border-b flex-shrink-0">
-                  <Input value={chapterTitle} onChange={(e) => setChapterTitle(e.target.value)} className="text-base font-semibold border-none shadow-none px-0 h-auto focus-visible:ring-0 flex-1" placeholder="章节标题" onBlur={saveChapter} />
-                  <Select value={chapterStatus} onValueChange={(v) => { setChapterStatus(v); setTimeout(saveChapter, 100); }}>
-                    <SelectTrigger className="w-20 h-7 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(CHAPTER_STATUS_MAP).map(([k, v]) => (
-                        <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 md:p-8">
-                  <Textarea value={chapterContent} onChange={(e) => handleContentChange(e.target.value)} className="min-h-full w-full resize-none border-none shadow-none bg-transparent text-sm leading-relaxed focus-visible:ring-0 placeholder:text-muted-foreground/50" placeholder="开始写作..." rows={30} />
-                </div>
-                <div className="flex items-center justify-between px-4 py-1 border-t text-[11px] text-muted-foreground flex-shrink-0">
-                  <span>{wordCount.toLocaleString()} 字</span>
-                  <span>{saving ? "保存中..." : "自动保存"}</span>
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-                <BookOpen className="size-10" />
-                <p className="text-sm">选择或创建一个章节开始写作</p>
-                <Button size="sm" variant="outline" onClick={() => setCreatingChapter(true)}>
-                  <Plus className="size-4 mr-1.5" />创建新章节
-                </Button>
-              </div>
-            )}
-          </div>
-        </ResizablePanel>
-
-        {/* AI Agent Panel */}
-        {showAgentPanel && (
-          <>
-            <ResizableHandle withHandle />
-            <ResizablePanel defaultSize={34} minSize={20} maxSize={55}>
-              <div className="flex flex-col h-full border-l">
-                {/* Agent Mode Toggle Header */}
-                <div className="flex items-center justify-between px-3 py-1.5 border-b flex-shrink-0">
-                  <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
-                    <button
-                      className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all", agentMode === "orchestrate" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
-                      onClick={() => setAgentMode("orchestrate")}
-                    >
-                      <Brain className="size-3.5" />
-                      <span>协同编排</span>
-                    </button>
-                    <button
-                      className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all", agentMode === "chat" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
-                      onClick={() => setAgentMode("chat")}
-                    >
-                      <Bot className="size-3.5" />
-                      <span>单 Agent</span>
-                    </button>
+          {/* ===== AI Agent Panel ===== */}
+          {showAgentPanel && (
+            <>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize={34} minSize={20} maxSize={55}>
+                <div className="flex flex-col h-full border-l">
+                  {/* Agent Mode Toggle Header */}
+                  <div className="flex items-center justify-between px-3 py-1.5 border-b flex-shrink-0">
+                    <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
+                      <button className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all", agentMode === "orchestrate" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")} onClick={() => setAgentMode("orchestrate")}>
+                        <Brain className="size-3.5" />
+                        <span>协同编排</span>
+                      </button>
+                      <button className={cn("flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all", agentMode === "chat" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")} onClick={() => setAgentMode("chat")}>
+                        <Bot className="size-3.5" />
+                        <span>单 Agent</span>
+                      </button>
+                    </div>
+                    <Select value={selectedModel} onValueChange={(v) => setSelectedModel(v)}>
+                      <SelectTrigger className="h-6 w-[110px] text-[10px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {AVAILABLE_MODELS.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            <span>{m.name}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Select value={selectedModel} onValueChange={(v) => setSelectedModel(v)}>
-                    <SelectTrigger className="h-6 w-[110px] text-[10px]"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {AVAILABLE_MODELS.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>
-                          <span>{m.name}</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
 
-                {/* Orchestration Mode */}
-                {agentMode === "orchestrate" ? (
-                  <OrchestrationPanel
-                    novelTitle={currentNovel?.title}
-                    novelGenre={currentNovel?.genre}
-                    novelDescription={currentNovel?.description}
-                    chapterContent={chapterContent}
-                    characters={characters}
-                    novelId={selectedNovelId || undefined}
-                    chapterId={selectedChapterId || undefined}
-                    selectedModel={selectedModel}
-                    onModelChange={setSelectedModel}
-                    onAdoptContent={(content) => setChapterContent((prev) => prev + (prev ? "\n\n" : "") + content)}
-                  />
-                ) : (
-                  <>
-                    {/* Chat Mode: Agent Type Selector */}
-                    <ScrollArea className="horizontal-only border-b flex-shrink-0">
-                      <div className="flex gap-1.5 p-2">
-                        {AGENT_DEFINITIONS.map((agent) => (
-                          <button key={agent.type} className={cn("flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium transition-colors whitespace-nowrap", selectedAgent === agent.type ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80")} onClick={() => setSelectedAgent(agent.type)}>
-                            <Wand2 className="size-2.5" />{agent.name}
-                          </button>
-                        ))}
-                      </div>
-                    </ScrollArea>
-
-                    {/* AI Messages */}
-                    <ScrollArea className="flex-1 p-3">
-                      <div className="space-y-2">
-                        {aiMessages.length === 0 && (
-                          <div className="text-center py-8">
-                            <Sparkles className="size-7 text-amber-400 mx-auto mb-2" />
-                            <p className="text-xs text-muted-foreground mb-0.5">{AGENT_DEFINITIONS.find((a) => a.type === selectedAgent)?.name}</p>
-                            <p className="text-[10px] text-muted-foreground max-w-[200px] mx-auto">{AGENT_DEFINITIONS.find((a) => a.type === selectedAgent)?.description}</p>
-                            {agentConfigs[selectedAgent] && (
-                              <div className="flex items-center gap-1 justify-center mt-2 flex-wrap">
-                                <Badge variant="outline" className="text-[9px]">{AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.name}</Badge>
-                                {agentConfigs[selectedAgent].skills.filter((s) => s.enabled).map((s) => (
-                                  <Badge key={s.id} variant="secondary" className="text-[9px]">
-                                    {s.name}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {aiMessages.map((msg, i) => (
-                          <div key={i} className={cn("rounded-lg p-2.5 text-xs", msg.role === "user" ? "bg-primary/10 ml-4" : "bg-muted mr-4")}>
-                            {msg.role === "assistant" && msg.agentType && (
-                              <Badge variant="outline" className="text-[9px] mb-1">{AGENT_DEFINITIONS.find((a) => a.type === msg.agentType)?.name}</Badge>
-                            )}
-                            {msg.content ? (
-                              <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
-                            ) : isAgentRunning && streamingText ? (
-                              <div className="whitespace-pre-wrap leading-relaxed">{streamingText}<span className="animate-pulse">▊</span></div>
-                            ) : null}
-                            {msg.role === "assistant" && msg.content && (
-                              <div className="flex gap-1 mt-1.5">
-                                <Button variant="ghost" size="sm" className="h-5 text-[9px] px-1.5" onClick={() => setChapterContent((prev) => prev + (prev ? "\n\n" : "") + msg.content)}>采纳到正文</Button>
-                                <Button variant="ghost" size="sm" className="h-5 text-[9px] px-1.5" onClick={() => { navigator.clipboard.writeText(msg.content); }}>复制</Button>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                        {isAgentRunning && !streamingText && (
-                          <div className="rounded-lg p-2.5 bg-muted mr-4">
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <Loader2 className="size-3 animate-spin" />连接中...
-                            </div>
-                          </div>
-                        )}
-                        <div ref={aiEndRef} />
-                      </div>
-                    </ScrollArea>
-
-                    {/* Quick Actions */}
-                    <div className="px-2 py-1 border-t flex gap-1 flex-shrink-0 overflow-x-auto">
-                      {selectedAgent === "planner" && (
-                        <>
-                          <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("帮我生成这个故事的大纲")}>生成大纲</Button>
-                          <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("设计下一个章节的情节")}>下一章情节</Button>
-                        </>
-                      )}
-                      {selectedAgent === "writer" && currentChapter && (
-                        <>
-                          <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("续写当前章节，保持风格一致")}>续写</Button>
-                          <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("写一段精彩的对话场景")}>对话场景</Button>
-                          <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("写一段激烈的打斗场景")}>打斗场景</Button>
-                        </>
-                      )}
-                      {selectedAgent === "editor" && currentChapter && (
-                        <>
-                          <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("润色当前内容")}>润色</Button>
-                          <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("检查逻辑和一致性")}>逻辑检查</Button>
-                        </>
-                      )}
-                      {selectedAgent === "character" && (
-                        <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("分析当前角色设定的一致性")}>角色分析</Button>
-                      )}
-                      {selectedAgent === "worldbuilder" && (
-                        <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("帮我完善世界观设定")}>完善世界观</Button>
-                      )}
-                      {selectedAgent === "reviewer" && currentChapter && (
-                        <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("对当前章节进行全面质量评审")}>质量评审</Button>
-                      )}
-                      {selectedAgent === "hermes" && (
-                        <Button size="sm" variant="ghost" className="text-[9px] h-5 px-1.5" onClick={() => setAiMessage("分析当前创作进度，给出下一步创作建议")}>创作建议</Button>
-                      )}
-                    </div>
-
-                    {/* Input */}
-                    <div className="p-2 border-t flex-shrink-0">
-                      <div className="flex gap-1.5">
-                        <Textarea value={aiMessage} onChange={(e) => setAiMessage(e.target.value)} placeholder={`向${AGENT_DEFINITIONS.find((a) => a.type === selectedAgent)?.name}发送指令...`} className="min-h-[48px] max-h-[100px] resize-none text-xs" rows={2} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendToAgent(); } }} />
-                        <div className="flex flex-col gap-1">
-                          {isAgentRunning ? (
-                            <Button size="icon" className="self-end size-8 bg-destructive text-white hover:bg-destructive/90" onClick={stopGeneration}>
-                              <XCircle className="size-3.5" />
-                            </Button>
-                          ) : (
-                            <Button size="icon" className="self-end size-8" onClick={sendToAgent} disabled={!aiMessage.trim()}>
-                              <Send className="size-3.5" />
-                            </Button>
-                          )}
+                  {agentMode === "orchestrate" ? (
+                    <OrchestrationPanel
+                      novelTitle={currentNovel?.title}
+                      novelGenre={currentNovel?.genre}
+                      novelDescription={currentNovel?.description}
+                      chapterContent={chapterContent}
+                      characters={characters}
+                      novelId={selectedNovelId || undefined}
+                      chapterId={selectedChapterId || undefined}
+                      selectedModel={selectedModel}
+                      onModelChange={setSelectedModel}
+                      onAdoptContent={(content) => setChapterContent((prev) => prev + (prev ? "\n\n" : "") + content)}
+                    />
+                  ) : (
+                    <>
+                      {/* Chat Mode: Agent Type Selector */}
+                      <ScrollArea className="horizontal-only border-b flex-shrink-0">
+                        <div className="flex gap-1.5 p-2">
+                          {AGENT_DEFINITIONS.map((agent) => (
+                            <button key={agent.type} className={cn("flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium transition-colors whitespace-nowrap", selectedAgent === agent.type ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80")} onClick={() => setSelectedAgent(agent.type)}>
+                              <Wand2 className="size-2.5" />{agent.name}
+                            </button>
+                          ))}
                         </div>
+                      </ScrollArea>
+
+                      {/* AI Messages */}
+                      <ScrollArea className="flex-1 p-3">
+                        <div className="space-y-2">
+                          {aiMessages.length === 0 && (
+                            <div className="text-center py-8">
+                              <Sparkles className="size-7 text-amber-400 mx-auto mb-2" />
+                              <p className="text-xs text-muted-foreground mb-0.5">{AGENT_DEFINITIONS.find((a) => a.type === selectedAgent)?.name}</p>
+                              <p className="text-[10px] text-muted-foreground max-w-[200px] mx-auto">{AGENT_DEFINITIONS.find((a) => a.type === selectedAgent)?.description}</p>
+                            </div>
+                          )}
+                          {aiMessages.map((msg, i) => (
+                            <div key={i} className={cn("rounded-lg p-2.5 text-xs", msg.role === "user" ? "bg-primary/10 ml-4" : "bg-muted mr-4")}>
+                              {msg.role === "assistant" && msg.agentType && (
+                                <Badge variant="outline" className="text-[9px] mb-1">{AGENT_DEFINITIONS.find((a) => a.type === msg.agentType)?.name}</Badge>
+                              )}
+                              {msg.content ? (
+                                <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+                              ) : isAgentRunning && streamingText ? (
+                                <div className="whitespace-pre-wrap leading-relaxed">{streamingText}<span className="animate-pulse">▊</span></div>
+                              ) : null}
+                              {msg.role === "assistant" && msg.content && (
+                                <div className="flex gap-1 mt-1.5">
+                                  <Button variant="ghost" size="sm" className="h-5 text-[9px] px-1.5" onClick={() => setChapterContent((prev) => prev + (prev ? "\n\n" : "") + msg.content)}>采纳到正文</Button>
+                                  <Button variant="ghost" size="sm" className="h-5 text-[9px] px-1.5" onClick={() => { navigator.clipboard.writeText(msg.content); }}>复制</Button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {isAgentRunning && !streamingText && (
+                            <div className="rounded-lg p-2.5 bg-muted mr-4">
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Loader2 className="size-3 animate-spin" />连接中...
+                              </div>
+                            </div>
+                          )}
+                          <div ref={aiEndRef} />
+                        </div>
+                      </ScrollArea>
+
+                      {/* Input */}
+                      <div className="flex items-center gap-2 p-2 border-t flex-shrink-0">
+                        <Input value={aiMessage} onChange={(e) => setAiMessage(e.target.value)} placeholder="输入指令..." className="h-8 text-xs" onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendToAgent(); } }} />
+                        {isAgentRunning ? (
+                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => { if (abortControllerRef.current) abortControllerRef.current.abort(); }}>
+                            <Loader2 className="size-3.5" />
+                          </Button>
+                        ) : (
+                          <Button size="sm" className="h-8 w-8 p-0" onClick={sendToAgent} disabled={!aiMessage.trim()}>
+                            <Send className="size-3.5" />
+                          </Button>
+                        )}
                       </div>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">Ctrl+Enter 发送 · {AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.name}</p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </ResizablePanel>
-          </>
-        )}
-      </ResizablePanelGroup>
+                    </>
+                  )}
+                </div>
+              </ResizablePanel>
+            </>
+          )}
+        </ResizablePanelGroup>
+      )}
+
+      {/* ===== Dialogs ===== */}
+      {/* Create Character Dialog */}
+      <Dialog open={showCharacterDialog} onOpenChange={setShowCharacterDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>添加角色</DialogTitle><DialogDescription>为新作品创建角色设定</DialogDescription></DialogHeader>
+          <div className="grid gap-3 py-3">
+            <div><label className="text-xs text-muted-foreground mb-1 block">角色名称 *</label><Input value={charForm.name} onChange={(e) => setCharForm({ ...charForm, name: e.target.value })} placeholder="如：李明" /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">角色定位 *</label>
+              <Select value={charForm.role} onValueChange={(v: any) => setCharForm({ ...charForm, role: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="protagonist">主角</SelectItem>
+                  <SelectItem value="antagonist">反派</SelectItem>
+                  <SelectItem value="supporting">配角</SelectItem>
+                  <SelectItem value="minor">龙套</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">角色描述</label><Textarea value={charForm.description} onChange={(e) => setCharForm({ ...charForm, description: e.target.value })} rows={2} placeholder="简要描述角色特征..." /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">性格特点</label><Textarea value={charForm.personality} onChange={(e) => setCharForm({ ...charForm, personality: e.target.value })} rows={2} placeholder="性格关键词，逗号分隔..." /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setShowCharacterDialog(false)}>取消</Button><Button onClick={saveCharacter} disabled={!charForm.name.trim()}>添加</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create World Setting Dialog */}
+      <Dialog open={showWorldDialog} onOpenChange={setShowWorldDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>添加世界观设定</DialogTitle><DialogDescription>创建世界观的组成要素</DialogDescription></DialogHeader>
+          <div className="grid gap-3 py-3">
+            <div><label className="text-xs text-muted-foreground mb-1 block">设定名称 *</label><Input value={worldForm.name} onChange={(e) => setWorldForm({ ...worldForm, name: e.target.value })} placeholder="如：天玄大陆" /></div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">分类 *</label>
+              <Select value={worldForm.category} onValueChange={(v: any) => setWorldForm({ ...worldForm, category: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="geography">地理环境</SelectItem>
+                  <SelectItem value="history">历史纪年</SelectItem>
+                  <SelectItem value="culture">文化风俗</SelectItem>
+                  <SelectItem value="magic">魔法体系</SelectItem>
+                  <SelectItem value="technology">科技设定</SelectItem>
+                  <SelectItem value="other">其他</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div><label className="text-xs text-muted-foreground mb-1 block">详细描述</label><Textarea value={worldForm.description} onChange={(e) => setWorldForm({ ...worldForm, description: e.target.value })} rows={3} placeholder="描述这个设定的详细内容..." /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setShowWorldDialog(false)}>取消</Button><Button onClick={saveWorldSetting} disabled={!worldForm.name.trim()}>添加</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Chapter Dialog */}
       <Dialog open={creatingChapter} onOpenChange={setCreatingChapter}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>添加新章节</DialogTitle><DialogDescription>创建一个新章节开始写作</DialogDescription></DialogHeader>
-          <div className="py-3"><Input placeholder="章节标题（可选，默认自动编号）" value={newChapterTitle} onChange={(e) => setNewChapterTitle(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") createChapter(); }} /></div>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>创建新章节</DialogTitle><DialogDescription>为作品添加新章节</DialogDescription></DialogHeader>
+          <div className="grid gap-3 py-3">
+            <div><label className="text-xs text-muted-foreground mb-1 block">章节标题（可选）</label><Input value={newChapterTitle} onChange={(e) => setNewChapterTitle(e.target.value)} placeholder="留空自动编号" onKeyDown={(e) => { if (e.key === "Enter") createChapter(); }} /></div>
+          </div>
           <DialogFooter><Button variant="outline" onClick={() => setCreatingChapter(false)}>取消</Button><Button onClick={createChapter}>创建</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Character Dialog */}
-      <Dialog open={showCharacterDialog} onOpenChange={setShowCharacterDialog}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>添加角色</DialogTitle><DialogDescription>创建新的角色设定</DialogDescription></DialogHeader>
-          <div className="grid gap-3 py-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-xs text-muted-foreground mb-1 block">角色名称 *</label><Input value={charForm.name} onChange={(e) => setCharForm({ ...charForm, name: e.target.value })} placeholder="输入名称" /></div>
-              <div><label className="text-xs text-muted-foreground mb-1 block">角色定位</label><Select value={charForm.role} onValueChange={(v: any) => setCharForm({ ...charForm, role: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="protagonist">主角</SelectItem><SelectItem value="antagonist">反派</SelectItem><SelectItem value="supporting">配角</SelectItem><SelectItem value="minor">路人</SelectItem></SelectContent></Select></div>
-            </div>
-            <div><label className="text-xs text-muted-foreground mb-1 block">角色描述</label><Textarea value={charForm.description} onChange={(e) => setCharForm({ ...charForm, description: e.target.value })} placeholder="简要描述角色" rows={2} /></div>
-            <div><label className="text-xs text-muted-foreground mb-1 block">性格特点</label><Textarea value={charForm.personality} onChange={(e) => setCharForm({ ...charForm, personality: e.target.value })} placeholder="描述性格特征" rows={2} /></div>
-            <div><label className="text-xs text-muted-foreground mb-1 block">外貌特征</label><Textarea value={charForm.appearance} onChange={(e) => setCharForm({ ...charForm, appearance: e.target.value })} placeholder="描述外貌" rows={2} /></div>
-            <div><label className="text-xs text-muted-foreground mb-1 block">背景故事</label><Textarea value={charForm.backstory} onChange={(e) => setCharForm({ ...charForm, backstory: e.target.value })} placeholder="背景经历" rows={2} /></div>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setShowCharacterDialog(false)}>取消</Button><Button onClick={saveCharacter} disabled={!charForm.name.trim()}>保存</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* World Setting Dialog */}
-      <Dialog open={showWorldDialog} onOpenChange={setShowWorldDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>添加世界观设定</DialogTitle><DialogDescription>创建新的世界观设定项</DialogDescription></DialogHeader>
-          <div className="grid gap-3 py-3">
-            <div><label className="text-xs text-muted-foreground mb-1 block">设定名称 *</label><Input value={worldForm.name} onChange={(e) => setWorldForm({ ...worldForm, name: e.target.value })} placeholder="如：灵气体系" /></div>
-            <div><label className="text-xs text-muted-foreground mb-1 block">分类</label><Select value={worldForm.category} onValueChange={(v: any) => setWorldForm({ ...worldForm, category: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="geography">地理</SelectItem><SelectItem value="history">历史</SelectItem><SelectItem value="culture">文化</SelectItem><SelectItem value="magic">魔法/修真</SelectItem><SelectItem value="technology">科技</SelectItem><SelectItem value="other">其他</SelectItem></SelectContent></Select></div>
-            <div><label className="text-xs text-muted-foreground mb-1 block">详细描述</label><Textarea value={worldForm.description} onChange={(e) => setWorldForm({ ...worldForm, description: e.target.value })} placeholder="描述这个设定" rows={4} /></div>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setShowWorldDialog(false)}>取消</Button><Button onClick={saveWorldSetting} disabled={!worldForm.name.trim()}>保存</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -937,44 +895,10 @@ export function WorkspaceView() {
       <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>导出作品</DialogTitle><DialogDescription>选择导出格式</DialogDescription></DialogHeader>
-          <div className="grid gap-3 py-4">
-            <button className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted transition-colors" onClick={() => handleExport("txt")}>
-              <FileText className="size-5 text-muted-foreground" />
-              <div className="text-left"><p className="text-sm font-medium">纯文本 (TXT)</p><p className="text-[11px] text-muted-foreground">通用格式，兼容所有阅读器</p></div>
-            </button>
-            <button className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted transition-colors" onClick={() => handleExport("md")}>
-              <FileDown className="size-5 text-muted-foreground" />
-              <div className="text-left"><p className="text-sm font-medium">Markdown (MD)</p><p className="text-[11px] text-muted-foreground">支持格式化，适合二次编辑</p></div>
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Agent Task History Dialog */}
-      <Dialog open={showTaskHistory} onOpenChange={setShowTaskHistory}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh]">
-          <DialogHeader><DialogTitle>Agent 任务记录</DialogTitle><DialogDescription>查看所有 AI Agent 的操作历史</DialogDescription></DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto">
-            {agentTasks.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground text-sm">暂无任务记录</div>
-            ) : (
-              <div className="space-y-2">
-                {agentTasks.map((task: any) => (
-                  <div key={task.id} className="rounded-lg border p-3 space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px]">{AGENT_DEFINITIONS.find((a) => a.type === task.agentType)?.name}</Badge>
-                        {task.status === "completed" ? <CheckCircle2 className="size-3 text-emerald-500" /> : task.status === "running" ? <Loader2 className="size-3 text-blue-500 animate-spin" /> : <XCircle className="size-3 text-red-500" />}
-                      </div>
-                      <span className="text-[10px] text-muted-foreground">{new Date(task.createdAt).toLocaleString("zh-CN")}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground truncate">{task.input}</p>
-                    {task.output && <p className="text-xs line-clamp-2">{task.output}</p>}
-                    {task.errorMessage && <p className="text-xs text-destructive">{task.errorMessage}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="grid gap-2 py-3">
+            <Button variant="outline" className="justify-start gap-2" onClick={() => handleExport("txt")}><FileText className="size-4" />纯文本 (.txt)</Button>
+            <Button variant="outline" className="justify-start gap-2" onClick={() => handleExport("md")}><FileText className="size-4" />Markdown (.md)</Button>
+            <Button variant="outline" className="justify-start gap-2" onClick={() => handleExport("json")}><FileText className="size-4" />JSON (.json)</Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -33,10 +33,21 @@ function saveAgentConfigs(configs: Record<string, AgentConfig>) {
   }
 }
 
+// Workspace navigation tabs for the Hermes Canvas double-layer structure
+export type WorkspaceCreativeTab = "outline" | "characters" | "worldview";
+export type WorkspaceEngineeringTab = "version";
+export type WorkspaceTab = WorkspaceCreativeTab | WorkspaceEngineeringTab;
+
 interface AppState {
   // Navigation
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
+
+  // Workspace Canvas navigation
+  workspaceTab: WorkspaceTab;
+  setWorkspaceTab: (tab: WorkspaceTab) => void;
+  engineeringCollapsed: boolean;
+  setEngineeringCollapsed: (v: boolean) => void;
 
   // Novel selection
   selectedNovelId: string | null;
@@ -79,6 +90,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Navigation
   currentView: "dashboard",
   setCurrentView: (view) => set({ currentView: view }),
+
+  // Workspace Canvas navigation
+  workspaceTab: "outline",
+  setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
+  engineeringCollapsed: false,
+  setEngineeringCollapsed: (v) => set({ engineeringCollapsed: v }),
 
   // Novel selection
   selectedNovelId: null,
