@@ -471,3 +471,25 @@ Stage Summary:
 - AI Agent 生成的角色、世界观、大纲等直接写入对应规格文档
 - 版本管理工具（提案/快照/分支）集成到底部状态栏
 - 代码已提交：504335c
+
+---
+Task ID: 11
+Agent: Main Developer
+Task: 代码清理与功能修复 - 删除冗余组件、修复TypeScript错误、重连编排面板
+
+Work Log:
+- 识别并删除4个未使用的workspace组件（outline-canvas, character-archive, worldview-gallery, version-center）
+- 识别并删除4个过时的platform组件（version-panel, character-sheet, world-sheet, version-sheet）
+- 修复db.ts TypeScript错误：relOpts.orderBy/take属性访问需要类型断言
+- 重新连接OrchestrationPanel到workspace：通过底部Sheet抽屉访问
+- 在workspace工具栏添加Brain图标按钮（协同编排入口）
+- 添加关闭编排面板时自动刷新specs和novel数据的逻辑
+- 清理workspace-view.tsx中5个未使用的imports
+- ESLint 0 errors, TypeScript 0 errors in src/
+
+Stage Summary:
+- 删除8个冗余文件（约8600行代码）
+- OrchestrationPanel重新连接到workspace（Brain按钮 → 底部Sheet）
+- 编排完成后自动刷新规格文档列表
+- 代码质量：lint clean, TS clean
+- 已推送：commit 674bc0b

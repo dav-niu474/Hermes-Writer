@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateChat, generateChatStream } from "@/lib/ai";
-import { db } from "@/lib/db";
+import { ensureDbInitialized } from "@/lib/db";
 import type { AgentType } from "@/lib/types";
 import { DEFAULT_AGENT_CONFIGS } from "@/lib/types";
 
@@ -213,6 +213,7 @@ async function executeAgentTaskStream(
 
 // ===== Auto-save agent output to NovelSpec =====
 async function saveAgentOutputToSpec(
+  dbClient: any,
   novelId: string,
   agentType: AgentType,
   taskTitle: string,
@@ -227,7 +228,7 @@ async function saveAgentOutputToSpec(
 
   try {
     // Check if a spec with this category already exists for this novel
-    const existingSpec = await db.novelSpec.findFirst({
+    const existingSpec = await dbClient.novelSpec.findFirst({
       where: { novelId, category },
     });
 
@@ -236,7 +237,7 @@ async function saveAgentOutputToSpec(
     if (existingSpec) {
       // Update existing spec (increment version)
       specId = existingSpec.id;
-      await db.novelSpec.update({
+      await dbClient.novelSpec.update({
         where: { id: specId },
         data: {
           content: output,
@@ -248,7 +249,7 @@ async function saveAgentOutputToSpec(
     } else {
       // Create new spec
       specId = crypto.randomUUID();
-      await db.novelSpec.create({
+      await dbClient.novelSpec.create({
         data: {
           id: specId,
           novelId,
@@ -277,6 +278,7 @@ async function saveAgentOutputToSpec(
 
 // ===== Auto-create branch =====
 async function autoCreateBranch(
+  dbClient: any,
   novelId: string,
   send: (event: string, data: unknown) => void
 ): Promise<string | null> {
@@ -285,7 +287,7 @@ async function autoCreateBranch(
     const branchName = `hermes-${shortTimestamp}`;
     const branchId = crypto.randomUUID();
 
-    const branch = await db.branch.create({
+    const branch = await dbClient.branch.create({
       data: {
         id: branchId,
         novelId,
@@ -311,6 +313,7 @@ async function autoCreateBranch(
 
 // ===== Auto-create Change Proposal =====
 async function autoCreateProposal(
+  dbClient: any,
   novelId: string,
   userMessage: string,
   plan: OrchPlan,
@@ -324,7 +327,7 @@ async function autoCreateProposal(
       .map((t) => `${t.agent}(${t.title})`)
       .join("、");
 
-    await db.changeProposal.create({
+    await dbClient.changeProposal.create({
       data: {
         id: proposalId,
         novelId,
@@ -357,6 +360,18 @@ async function autoCreateProposal(
 // ===== POST /api/agents/orchestrate =====
 export async function POST(request: Request) {
   try {
+    // Try to init DB (non-fatal — AI works without DB)
+    await ensureDbInitialized().catch(() => {});
+
+    // Dynamic import db to get the real instance
+    let dbClient: any = null;
+    try {
+      const dbModule = await import("@/lib/db");
+      dbClient = dbModule.db;
+    } catch {
+      dbClient = null;
+    }
+
     const body = await request.json();
     const {
       message,
@@ -459,8 +474,8 @@ export async function POST(request: Request) {
 
           // ===== Auto-Create Branch (after planning, if novelId provided) =====
           let branchId: string | null = null;
-          if (novelId) {
-            branchId = await autoCreateBranch(novelId, send);
+          if (novelId && dbClient) {
+            branchId = await autoCreateBranch(dbClient, novelId, send);
           }
 
           // ===== Phase 2: Execute Tasks =====
@@ -492,9 +507,9 @@ export async function POST(request: Request) {
               taskResults.push({ agent: task.agent, title: task.title, output, thinking });
               send("task_complete", { taskId: i, agent: task.agent, title: task.title, success: true });
 
-              // ===== Auto-Save Agent Output to Spec (if novelId provided) =====
-              if (novelId && output) {
-                await saveAgentOutputToSpec(novelId, task.agent as AgentType, task.title, output, i, send);
+              // ===== Auto-Save Agent Output to Spec (if novelId and dbClient provided) =====
+              if (novelId && dbClient && output) {
+                await saveAgentOutputToSpec(dbClient, novelId, task.agent as AgentType, task.title, output, i, send);
               }
             } catch (taskErr) {
               const errMsg = taskErr instanceof Error ? taskErr.message : "Unknown error";
@@ -502,9 +517,9 @@ export async function POST(request: Request) {
             }
           }
 
-          // ===== Auto-Create Change Proposal (after all tasks, if novelId provided) =====
-          if (novelId) {
-            await autoCreateProposal(novelId, message, plan, send);
+          // ===== Auto-Create Change Proposal (after all tasks, if novelId and dbClient provided) =====
+          if (novelId && dbClient) {
+            await autoCreateProposal(dbClient, novelId, message, plan, send);
           }
 
           // ===== Phase 3: Summary =====
