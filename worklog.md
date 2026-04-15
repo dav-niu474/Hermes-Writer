@@ -493,3 +493,29 @@ Stage Summary:
 - 编排完成后自动刷新规格文档列表
 - 代码质量：lint clean, TS clean
 - 已推送：commit 674bc0b
+
+---
+Task ID: 12
+Agent: Main Developer
+Task: 代码质量修复 + AI助手实现 + 编排API兼容性改进
+
+Work Log:
+- 修复orchestrate/route.ts直接导入db的问题：改为动态导入+null fallback，Vercel兼容
+- 所有DB操作（saveAgentOutputToSpec, autoCreateBranch, autoCreateProposal）改为接受dbClient参数
+- 实现完整的AI聊天助手（ai-assistant-drawer.tsx）：
+  - 支持7种Agent类型切换
+  - 6个快速指令模板
+  - 聊天气泡、Agent徽章、时间戳
+  - 复制消息、清除历史、停止生成
+  - 传入chapterContent上下文
+  - Enter发送，Shift+Enter换行
+- AI助手集成到workspace底部Sheet抽屉
+- 编排面板集成到workspace底部Sheet抽屉（Brain按钮入口）
+- 编排面板关闭时自动刷新specs和novel数据
+
+Stage Summary:
+- orchestrate API现在Vercel兼容（无DB时优雅降级）
+- AI助手从stub变为完整功能组件（331行新增）
+- 编排面板重新连接到workspace
+- 3个commits推送：674bc0b, a75c01f, e0e7d8b
+- ESLint 0 errors, TypeScript 0 errors in src/
