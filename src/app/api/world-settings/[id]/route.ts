@@ -9,43 +9,39 @@ export async function PUT(
     await ensureDbInitialized();
     const { id } = await params;
     const body = await request.json();
-    const { name, role, description, personality, appearance, backstory } = body;
+    const { name, category, description } = body;
 
     if (!name?.trim()) {
       return NextResponse.json({ error: "name is required" }, { status: 400 });
     }
 
-    const character = await db.character.update({
+    const setting = await db.worldSetting.update({
       where: { id },
       data: {
         name: name.trim(),
-        role: role || "supporting",
+        category: category || "geography",
         description: description?.trim() || "",
-        personality: personality?.trim() || "",
-        appearance: appearance?.trim() || "",
-        backstory: backstory?.trim() || "",
       },
     });
 
-    return NextResponse.json(character);
+    return NextResponse.json(setting);
   } catch (error) {
-    console.error("Failed to update character:", error);
-    return NextResponse.json({ error: "Failed to update character" }, { status: 500 });
+    console.error("Failed to update world setting:", error);
+    return NextResponse.json({ error: "Failed to update world setting" }, { status: 500 });
   }
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await ensureDbInitialized();
     const { id } = await params;
-
-    await db.character.delete({ where: { id } });
+    await db.worldSetting.delete({ where: { id } });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Failed to delete character:", error);
-    return NextResponse.json({ error: "Failed to delete character" }, { status: 500 });
+    console.error("Failed to delete world setting:", error);
+    return NextResponse.json({ error: "Failed to delete world setting" }, { status: 500 });
   }
 }

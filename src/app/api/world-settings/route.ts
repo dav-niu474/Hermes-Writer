@@ -1,6 +1,25 @@
 import { NextResponse } from "next/server";
 import { db, ensureDbInitialized } from "@/lib/db";
 
+export async function GET(request: Request) {
+  try {
+    await ensureDbInitialized();
+    const { searchParams } = new URL(request.url);
+    const novelId = searchParams.get("novelId");
+    if (!novelId) {
+      return NextResponse.json({ error: "novelId is required" }, { status: 400 });
+    }
+    const settings = await db.worldSetting.findMany({
+      where: { novelId },
+      orderBy: [{ category: "asc" }, { createdAt: "desc" }],
+    });
+    return NextResponse.json(settings);
+  } catch (error) {
+    console.error("Failed to fetch world settings:", error);
+    return NextResponse.json({ error: "Failed to fetch world settings" }, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     await ensureDbInitialized();

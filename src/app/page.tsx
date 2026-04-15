@@ -10,6 +10,7 @@ import { NovelsView } from "@/components/platform/novels-view";
 import { WorkspaceView } from "@/components/platform/workspace-view";
 import { AgentsView } from "@/components/platform/agents-view";
 import { CreateNovelDialog } from "@/components/platform/create-novel-dialog";
+import { StoryWizardDemoButton } from "@/components/platform/story-wizard-demo";
 
 export default function Home() {
   const { currentView } = useAppStore();
@@ -49,6 +50,9 @@ export default function Home() {
 
       {/* Global Create Novel Dialog — accessible from any view */}
       <CreateNovelDialog />
+
+      {/* Story Wizard — accessible from dashboard */}
+      <StoryWizardDemoButton />
     </SidebarProvider>
   );
 }
