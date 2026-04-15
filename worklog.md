@@ -452,3 +452,22 @@ Stage Summary:
 - Left sidebar always visible with 4-tab grid + context-aware content + chapter list
 - Main content area context-aware: creative tabs → chapter editor, version tab → VersionCenter
 - All existing functionality preserved (agent panel, chat mode, orchestration, dialogs, export, stats)
+---
+Task ID: 1
+Agent: Main Agent
+Task: 统一工作空间 - 规格文档与章节融合 + AI生成内容自动写入规格文档
+
+Work Log:
+- 深入阅读所有现有组件（workspace-view, version-center, outline-canvas, character-archive, worldview-gallery, orchestrate/route, generate/route, store, types）
+- 识别核心问题：版本管理的规格文档（NovelSpec）与角色/世界观/大纲实际上是同一数据，却分散在不同面板
+- 重写 workspace-view.tsx：移除 Sheet 面板模式，统一为左侧导航栏（5个规格分类+章节列表）+ 右侧主内容区
+- 新增 SpecEditor 子组件：支持预览/编辑模式切换，大纲三幕结构预览，伏笔追踪
+- 新增 VersionPanel 子组件：底部状态栏集成的版本管理面板（提案/快照/分支/历史）
+- 更新 generate/route.ts：新增 autoSaveToSpec() 函数，AI 生成内容自动保存到对应 NovelSpec
+- 运行 lint 检查通过，提交并推送代码
+
+Stage Summary:
+- 规格文档（大纲/角色/世界观/规则/风格）现在与章节统一在左侧导航
+- AI Agent 生成的角色、世界观、大纲等直接写入对应规格文档
+- 版本管理工具（提案/快照/分支）集成到底部状态栏
+- 代码已提交：504335c
