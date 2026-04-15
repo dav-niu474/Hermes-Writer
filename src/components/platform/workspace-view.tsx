@@ -13,16 +13,12 @@ import {
 } from "@/lib/types";
 import { AVAILABLE_MODELS } from "@/lib/ai";
 import { OrchestrationPanel } from "@/components/platform/orchestration-panel";
-import { OutlineCanvas } from "@/components/workspace/outline-canvas";
-import { CharacterArchive } from "@/components/workspace/character-archive";
-import { WorldviewGallery } from "@/components/workspace/worldview-gallery";
 import { VersionCenter } from "@/components/workspace/version-center";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
@@ -65,28 +61,21 @@ import {
   FileText,
   Globe,
   Users,
-  History,
   BarChart3,
   CheckCircle2,
   Brain,
   Map,
-  Copy,
-  ChevronDown,
   GitBranch,
-  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// ===== Creative Layer Tab Definitions =====
-const CREATIVE_TABS: { id: WorkspaceTab; label: string; icon: React.ReactNode; color: string }[] = [
+// ===== Unified Workspace Tab Definitions =====
+const WORKSPACE_TABS: { id: WorkspaceTab; label: string; icon: React.ReactNode; color: string }[] = [
   { id: "outline", label: "大纲", icon: <Map className="size-3.5" />, color: "text-amber-500" },
   { id: "characters", label: "角色", icon: <Users className="size-3.5" />, color: "text-rose-500" },
   { id: "worldview", label: "世界观", icon: <Globe className="size-3.5" />, color: "text-orange-500" },
+  { id: "version", label: "版本", icon: <GitBranch className="size-3.5" />, color: "text-teal-500" },
 ];
-
-const ENGINEERING_TAB: { id: WorkspaceTab; label: string; icon: React.ReactNode; color: string } = {
-  id: "version", label: "版本管理", icon: <GitBranch className="size-3.5" />, color: "text-teal-500"
-};
 
 export function WorkspaceView() {
   const {
@@ -109,8 +98,6 @@ export function WorkspaceView() {
     agentConfigs,
     workspaceTab,
     setWorkspaceTab,
-    engineeringCollapsed,
-    setEngineeringCollapsed,
   } = useAppStore();
 
   const [loading, setLoading] = useState(true);
@@ -135,7 +122,6 @@ export function WorkspaceView() {
   const [worldForm, setWorldForm] = useState({ name: "", category: "geography" as WorldSettingCategory, description: "" });
   const [specs, setSpecs] = useState<any[]>([]);
   const [streamingText, setStreamingText] = useState("");
-  const [prevCreativeTab, setPrevCreativeTab] = useState<WorkspaceTab>("outline");
   const aiEndRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -405,11 +391,7 @@ export function WorkspaceView() {
   const currentChapter = chapters.find((c) => c.id === selectedChapterId);
   const wordCount = chapterContent.length;
 
-  // Determine what to show in main content area
-  // If a chapter is selected AND the workspace tab is a creative tab, show chapter editor with option to see full view
-  // Otherwise show the full workspace view for the selected tab
-  const showFullPageView = workspaceTab === "version";
-  const showChapterEditor = selectedChapterId && !showFullPageView;
+  const isVersionTab = workspaceTab === "version";
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
@@ -420,21 +402,14 @@ export function WorkspaceView() {
             variant="ghost"
             size="icon"
             className="size-8 flex-shrink-0"
-            onClick={() => {
-              if (showFullPageView) {
-                setWorkspaceTab(prevCreativeTab);
-                setEngineeringCollapsed(true);
-              } else {
-                setCurrentView("novels");
-              }
-            }}
+            onClick={() => setCurrentView("novels")}
           >
             <ArrowLeft className="size-4" />
           </Button>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold truncate">{currentNovel?.title}</h2>
             <p className="text-[11px] text-muted-foreground truncate">
-              {showFullPageView
+              {isVersionTab
                 ? "版本管理中心"
                 : currentChapter
                   ? `${currentChapter.title} · ${wordCount.toLocaleString()} 字`
@@ -470,7 +445,7 @@ export function WorkspaceView() {
               <TooltipContent>打开 AI 助手</TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          {!showFullPageView && (
+          {!isVersionTab && (
             <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={saveChapter} disabled={saving || !selectedChapterId}>
               <Save className="size-3.5" /><span className="hidden sm:inline">{saving ? "保存中" : "保存"}</span>
             </Button>
@@ -492,30 +467,19 @@ export function WorkspaceView() {
         </div>
       )}
 
-      {/* ===== Full Page View (Version Center) ===== */}
-      {showFullPageView && (
-        <div className="flex-1 overflow-hidden">
-          <VersionCenter novelId={selectedNovelId} />
-        </div>
-      )}
-
-      {/* ===== Main Content with Double-Layer Navigation ===== */}
-      {!showFullPageView && (
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
+      {/* ===== Main Content with Unified Navigation ===== */}
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
           {/* ===== Left Sidebar: Double-Layer Navigation ===== */}
           <ResizablePanel defaultSize={18} minSize={14} maxSize={28}>
             <div className="flex flex-col h-full border-r">
-              {/* Creative Layer Tabs */}
-              <div className="flex-shrink-0">
-                <div className="px-2 py-1.5">
-                  <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider px-1">创作层</p>
-                </div>
-                <div className="flex gap-0.5 px-1.5 pb-1">
-                  {CREATIVE_TABS.map((tab) => (
+              {/* Unified Workspace Tabs */}
+              <div className="flex-shrink-0 px-1.5 pt-1.5 pb-1">
+                <div className="grid grid-cols-4 gap-0.5">
+                  {WORKSPACE_TABS.map((tab) => (
                     <button
                       key={tab.id}
                       className={cn(
-                        "flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[11px] font-medium transition-all",
+                        "flex items-center justify-center gap-1 px-1 py-1.5 rounded-md text-[11px] font-medium transition-all",
                         workspaceTab === tab.id
                           ? "bg-primary/10 text-primary"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -625,29 +589,17 @@ export function WorkspaceView() {
                     </Button>
                   </div>
                 )}
+                {/* Version tab: compact summary in left sidebar */}
+                {workspaceTab === "version" && (
+                  <div className="p-1.5 space-y-1">
+                    <div className="text-center py-3 text-muted-foreground text-xs">
+                      <GitBranch className="size-5 mx-auto mb-1.5 text-teal-400" />
+                      <p className="font-medium">版本管理</p>
+                      <p className="text-[10px] mt-0.5">在右侧查看详情</p>
+                    </div>
+                  </div>
+                )}
               </ScrollArea>
-
-              {/* Engineering Layer (Collapsible) */}
-              <div className="flex-shrink-0 border-t">
-                <button
-                  className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={() => {
-                    if (engineeringCollapsed) {
-                      setPrevCreativeTab(workspaceTab);
-                      setEngineeringCollapsed(false);
-                      setWorkspaceTab("version");
-                    } else {
-                      setEngineeringCollapsed(true);
-                      setWorkspaceTab(prevCreativeTab);
-                    }
-                  }}
-                >
-                  <ChevronDown className={cn("size-3 transition-transform", engineeringCollapsed ? "-rotate-90" : "")} />
-                  <GitBranch className={cn("size-3.5", ENGINEERING_TAB.color)} />
-                  <span>{ENGINEERING_TAB.label}</span>
-                  <Layers className="size-3 ml-auto text-muted-foreground/50" />
-                </button>
-              </div>
 
               {/* Chapter List (Always visible at bottom) */}
               <div className="flex-shrink-0 border-t">
@@ -694,7 +646,12 @@ export function WorkspaceView() {
 
           {/* ===== Main Content Area: Context-Aware ===== */}
           <ResizablePanel defaultSize={showAgentPanel ? 48 : 82} minSize={25}>
-            <div className="flex flex-col h-full">
+            {isVersionTab ? (
+              <div className="flex-1 overflow-hidden">
+                <VersionCenter novelId={selectedNovelId} />
+              </div>
+            ) : (
+              <div className="flex flex-col h-full">
               {currentChapter ? (
                 <>
                   {/* Chapter Editor Header */}
@@ -728,6 +685,7 @@ export function WorkspaceView() {
                 </div>
               )}
             </div>
+            )}
           </ResizablePanel>
 
           {/* ===== AI Agent Panel ===== */}
@@ -845,7 +803,6 @@ export function WorkspaceView() {
             </>
           )}
         </ResizablePanelGroup>
-      )}
 
       {/* ===== Dialogs ===== */}
       {/* Create Character Dialog */}
