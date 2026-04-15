@@ -1177,7 +1177,7 @@ export function WorkspaceView() {
               <SheetTitle>AI 助手</SheetTitle>
               <SheetDescription>智能写作辅助</SheetDescription>
             </SheetHeader>
-            <AiAssistantDrawer novelId={selectedNovelId!} chapterId={selectedChapterId} />
+            <AiAssistantDrawer novelId={selectedNovelId!} chapterId={selectedChapterId} chapterContent={chapterContent} />
           </SheetContent>
         </Sheet>
 
