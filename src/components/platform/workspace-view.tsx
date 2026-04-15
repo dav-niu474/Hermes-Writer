@@ -135,6 +135,7 @@ export function WorkspaceView() {
   const [worldForm, setWorldForm] = useState({ name: "", category: "geography" as WorldSettingCategory, description: "" });
   const [specs, setSpecs] = useState<any[]>([]);
   const [streamingText, setStreamingText] = useState("");
+  const [prevCreativeTab, setPrevCreativeTab] = useState<WorkspaceTab>("outline");
   const aiEndRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -415,15 +416,29 @@ export function WorkspaceView() {
       {/* ===== Top Bar ===== */}
       <div className="flex items-center justify-between border-b px-3 py-1.5 flex-shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center gap-2 min-w-0">
-          <Button variant="ghost" size="icon" className="size-8 flex-shrink-0" onClick={() => setCurrentView("novels")}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8 flex-shrink-0"
+            onClick={() => {
+              if (showFullPageView) {
+                setWorkspaceTab(prevCreativeTab);
+                setEngineeringCollapsed(true);
+              } else {
+                setCurrentView("novels");
+              }
+            }}
+          >
             <ArrowLeft className="size-4" />
           </Button>
           <div className="min-w-0">
             <h2 className="text-sm font-semibold truncate">{currentNovel?.title}</h2>
             <p className="text-[11px] text-muted-foreground truncate">
-              {currentChapter && !showFullPageView
-                ? `${currentChapter.title} · ${wordCount.toLocaleString()} 字`
-                : `${chapters.length} 章 · ${totalWords.toLocaleString()} 字 · ${characters.length} 角色`}
+              {showFullPageView
+                ? "版本管理中心"
+                : currentChapter
+                  ? `${currentChapter.title} · ${wordCount.toLocaleString()} 字`
+                  : `${chapters.length} 章 · ${totalWords.toLocaleString()} 字 · ${characters.length} 角色`}
             </p>
           </div>
         </div>
@@ -618,10 +633,12 @@ export function WorkspaceView() {
                   className="w-full flex items-center gap-2 px-3 py-2 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => {
                     if (engineeringCollapsed) {
+                      setPrevCreativeTab(workspaceTab);
                       setEngineeringCollapsed(false);
                       setWorkspaceTab("version");
                     } else {
                       setEngineeringCollapsed(true);
+                      setWorkspaceTab(prevCreativeTab);
                     }
                   }}
                 >
