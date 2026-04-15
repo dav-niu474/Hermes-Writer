@@ -3,6 +3,78 @@ import { ensureDbInitialized } from "@/lib/db";
 import { generateChat, generateChatStream, createStreamTransformer } from "@/lib/ai";
 import type { AgentType } from "@/lib/types";
 
+// Agent type → NovelSpec category mapping
+const AGENT_SPEC_CATEGORY: Partial<Record<AgentType, string>> = {
+  planner: "outline",
+  character: "characters",
+  worldbuilder: "worldbuilding",
+  editor: "style",
+  reviewer: "rules",
+};
+
+const AGENT_SPEC_TITLE: Partial<Record<AgentType, string>> = {
+  planner: "故事大纲",
+  character: "角色设定",
+  worldbuilder: "世界观设定",
+  editor: "编辑风格指南",
+  reviewer: "质量规则",
+};
+
+// Auto-save agent output to NovelSpec
+async function autoSaveToSpec(
+  db: any,
+  novelId: string,
+  agentType: AgentType,
+  output: string,
+  specCategory?: string
+): Promise<{ specId: string; category: string; title: string } | null> {
+  if (!db || !novelId || !output) return null;
+
+  const category = specCategory || AGENT_SPEC_CATEGORY[agentType];
+  if (!category) return null;
+
+  const specTitle = AGENT_SPEC_TITLE[agentType] || `${category} 文档`;
+
+  try {
+    const existingSpec = await db.novelSpec.findFirst({
+      where: { novelId, category },
+    });
+
+    let specId: string;
+    if (existingSpec) {
+      specId = existingSpec.id;
+      await db.novelSpec.update({
+        where: { id: specId },
+        data: {
+          content: output,
+          version: (existingSpec.version || 1) + 1,
+          title: specTitle,
+          status: "active",
+        },
+      });
+    } else {
+      specId = crypto.randomUUID();
+      await db.novelSpec.create({
+        data: {
+          id: specId,
+          novelId,
+          category,
+          title: specTitle,
+          content: output,
+          version: 1,
+          status: "active",
+        },
+      });
+    }
+
+    console.log(`[agent] Auto-saved output to spec: ${specTitle} (v${existingSpec ? (existingSpec.version || 1) + 1 : 1})`);
+    return { specId, category, title: specTitle };
+  } catch (err) {
+    console.warn("[agent] Failed to auto-save to spec:", err);
+    return null;
+  }
+}
+
 const AGENT_SYSTEM_PROMPTS: Record<AgentType, string> = {
   hermes: `你是 Hermes 主控 Agent，是一个网文创作平台的核心编排器。你负责：
 1. 分析用户的创作需求
@@ -135,6 +207,7 @@ export async function POST(request: Request) {
       temperature: clientTemperature,
       maxTokens: clientMaxTokens,
       memories,
+      specCategory,
     } = body;
 
     if (!agentType || !message) {
@@ -205,7 +278,7 @@ export async function POST(request: Request) {
               }
               controller.close();
 
-              // Update task record (non-critical)
+              // Update task record and auto-save to spec (non-critical)
               if (agentTask?.id && db) {
                 try {
                   await db.agentTask.update({
@@ -213,6 +286,10 @@ export async function POST(request: Request) {
                     data: { status: "completed", output: fullOutput },
                   });
                 } catch { /* non-critical */ }
+              }
+              // Auto-save streaming output to spec
+              if (novelId && fullOutput) {
+                await autoSaveToSpec(db, novelId, agentType as AgentType, fullOutput, specCategory);
               }
             } catch (err) {
               const errorMsg = err instanceof Error ? err.message : "Stream error";
@@ -273,12 +350,19 @@ export async function POST(request: Request) {
         } catch { /* non-critical */ }
       }
 
+      // Auto-save to spec if applicable
+      let savedSpec = null;
+      if (novelId) {
+        savedSpec = await autoSaveToSpec(db, novelId, agentType as AgentType, output, specCategory);
+      }
+
       return NextResponse.json({
         taskId: agentTask?.id,
         agentType,
         status: "completed",
         output,
         model: model || "glm-4-7",
+        savedSpec,
       });
     } catch (aiError) {
       const errorMsg = aiError instanceof Error ? aiError.message : "Unknown error";

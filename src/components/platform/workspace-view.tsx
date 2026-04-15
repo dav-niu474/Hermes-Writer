@@ -1,20 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useAppStore } from "@/lib/store";
 import {
   CHAPTER_STATUS_MAP,
   type Chapter,
-  type Character,
-  type WorldSetting,
   type AgentType,
-  type WorldSettingCategory,
 } from "@/lib/types";
-import {
-  Button,
-} from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
@@ -48,6 +46,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Plus,
@@ -58,22 +57,216 @@ import {
   ArrowLeft,
   Download,
   FileText,
-  Globe,
+  ChevronRight,
+  ChevronDown,
+  Map,
   Users,
+  Globe,
+  Shield,
+  Palette,
   GitBranch,
-  PenLine,
-  MessageSquare,
+  GitCommit,
+  GitCompare,
+  Eye,
+  Pencil,
+  Copy,
   Trash2,
+  History,
+  Layers,
+  MoreHorizontal,
+  BookMarked,
+  Target,
+  PenLine,
+  Wand2,
+  Clock,
+  MessageSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Stub imports — these components will be fully implemented by other agents
-import { CharacterSheet } from "@/components/platform/character-sheet";
-import { WorldSheet } from "@/components/platform/world-sheet";
-import { VersionSheet } from "@/components/platform/version-sheet";
+// Stub imports
 import { AiAssistantDrawer } from "@/components/platform/ai-assistant-drawer";
 import { StoryWizard } from "@/components/platform/story-wizard";
 
+// ===== Types =====
+interface NovelSpec {
+  id: string;
+  novelId: string;
+  category: string;
+  title: string;
+  content: string;
+  version: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type SpecCategory = "outline" | "characters" | "worldbuilding" | "rules" | "style";
+
+// ===== Category Config =====
+const SPEC_CATEGORIES: {
+  value: SpecCategory;
+  label: string;
+  icon: typeof Map;
+  color: string;
+  bgColor: string;
+  agentType: AgentType;
+  aiLabel: string;
+}[] = [
+  { value: "outline", label: "大纲", icon: Map, color: "text-amber-600 dark:text-amber-400", bgColor: "bg-amber-50 dark:bg-amber-900/30", agentType: "planner", aiLabel: "生成大纲" },
+  { value: "characters", label: "角色", icon: Users, color: "text-rose-600 dark:text-rose-400", bgColor: "bg-rose-50 dark:bg-rose-900/30", agentType: "character", aiLabel: "生成角色" },
+  { value: "worldbuilding", label: "世界观", icon: Globe, color: "text-orange-600 dark:text-orange-400", bgColor: "bg-orange-50 dark:bg-orange-900/30", agentType: "worldbuilder", aiLabel: "生成世界观" },
+  { value: "rules", label: "规则", icon: Shield, color: "text-emerald-600 dark:text-emerald-400", bgColor: "bg-emerald-50 dark:bg-emerald-900/30", agentType: "reviewer", aiLabel: "生成规则" },
+  { value: "style", label: "风格", icon: Palette, color: "text-violet-600 dark:text-violet-400", bgColor: "bg-violet-50 dark:bg-violet-900/30", agentType: "editor", aiLabel: "生成风格" },
+];
+
+function getCategoryConfig(category: string) {
+  return SPEC_CATEGORIES.find((c) => c.value === category) || SPEC_CATEGORIES[4];
+}
+
+// ===== Templates =====
+const SPEC_TEMPLATES: Record<string, string> = {
+  outline: `# 故事大纲
+
+## 核心设定
+- **故事类型**：
+- **核心冲突**：
+- **主题思想**：
+
+## 角色概览
+| 角色 | 身份 | 性格特征 | 故事功能 |
+|------|------|----------|----------|
+| 主角 | | | |
+
+## 伏笔追踪
+| 伏笔 | 埋设章节 | 回收章节 | 状态 |
+|------|----------|----------|------|
+| | | | 待埋设 |
+
+---
+
+### 第一幕：起
+
+**核心事件**：
+
+**情节要点**：
+1.
+2.
+3.
+
+---
+
+### 第二幕：承转
+
+**核心事件**：
+
+**情节要点**：
+1.
+2.
+3.
+
+---
+
+### 第三幕：合
+
+**核心事件**：
+
+**情节要点**：
+1.
+2.
+3.
+`,
+  characters: `# 角色设定
+
+## 主角
+### 基本信息
+- **姓名**：
+- **年龄**：
+- **外貌**：
+
+### 性格特征
+-
+
+### 背景故事
+-
+
+### 角色弧线
+- **起点**：
+- **转折点**：
+- **终点**：
+
+---
+
+## 配角
+
+### 角色一
+- **姓名**：
+- **与主角关系**：
+- **性格特点**：
+
+---
+
+## 角色关系图
+- 主角 ←→ 反派：对立关系
+- 主角 ←→ 导师：师徒关系
+`,
+  worldbuilding: `# 世界观设定
+
+## 基础框架
+- **世界名称**：
+- **世界类型**：
+- **时代背景**：
+
+## 力量体系
+- **体系名称**：
+- **等级划分**：
+- **核心规则**：
+
+## 地理环境
+-
+
+## 社会结构
+-
+
+## 文化风俗
+-
+`,
+  rules: `# 创作规则
+
+## 必须遵守
+1.
+2.
+3.
+
+## 禁止事项
+1.
+2.
+
+## 特殊约定
+-
+`,
+  style: `# 风格指南
+
+## 叙事风格
+- **人称**：
+- **语调**：
+
+## 语言特点
+-
+
+## 对话风格
+-
+
+## 节奏控制
+| 段落类型 | 节奏 | 字数占比 |
+|----------|------|----------|
+| 动作戏 | 快 | 30% |
+| 情感戏 | 慢 | 25% |
+| 描写 | 中 | 25% |
+| 对话 | 中 | 20% |
+`,
+};
+
+// ===== Main Component =====
 export function WorkspaceView() {
   const {
     selectedNovelId,
@@ -86,8 +279,6 @@ export function WorkspaceView() {
     setChapters,
     characters,
     setCharacters,
-    worldSettings,
-    setWorldSettings,
     isAgentRunning,
     setIsAgentRunning,
     setIsCreatingNovel,
@@ -95,43 +286,79 @@ export function WorkspaceView() {
     agentConfigs,
   } = useAppStore();
 
-  // Core editor state
+  // ===== Core state =====
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Spec state
+  const [specs, setSpecs] = useState<NovelSpec[]>([]);
+  const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null);
+  const [specContent, setSpecContent] = useState("");
+  const [specEditing, setSpecEditing] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
+    outline: true,
+    characters: true,
+    worldbuilding: false,
+    rules: false,
+    style: false,
+  });
+  const [specsLoading, setSpecsLoading] = useState(true);
+
+  // Chapter editing state
   const [chapterTitle, setChapterTitle] = useState("");
   const [chapterContent, setChapterContent] = useState("");
   const [chapterSummary, setChapterSummary] = useState("");
   const [chapterStatus, setChapterStatus] = useState<string>("draft");
 
-  // AI agent state
+  // AI state
+  const [aiGenerating, setAiGenerating] = useState<SpecCategory | null>(null);
   const [aiMessage, setAiMessage] = useState("");
-  const [aiMessages, setAiMessages] = useState<{ role: string; content: string; agentType?: string }[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<AgentType>("hermes");
-  const [selectedModel, setSelectedModel] = useState("glm-4-7");
-  const [streamingText, setStreamingText] = useState("");
-  const aiEndRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Dialog & panel state
-  const [creatingChapter, setCreatingChapter] = useState(false);
-  const [newChapterTitle, setNewChapterTitle] = useState("");
-  const [showCharacterDialog, setShowCharacterDialog] = useState(false);
-  const [showWorldDialog, setShowWorldDialog] = useState(false);
-  const [showExportDialog, setShowExportDialog] = useState(false);
-  const [charForm, setCharForm] = useState({ name: "", role: "supporting" as const, description: "", personality: "", appearance: "", backstory: "" });
-  const [worldForm, setWorldForm] = useState({ name: "", category: "geography" as WorldSettingCategory, description: "" });
-
-  // Sheet panels & new UI state
-  const [showCharacterSheet, setShowCharacterSheet] = useState(false);
-  const [showWorldSheet, setShowWorldSheet] = useState(false);
-  const [showVersionSheet, setShowVersionSheet] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
+
+  // Dialog state
+  const [showCreateSpec, setShowCreateSpec] = useState(false);
+  const [newSpecCategory, setNewSpecCategory] = useState<SpecCategory>("outline");
+  const [newSpecTitle, setNewSpecTitle] = useState("");
+  const [showCreateChapter, setShowCreateChapter] = useState(false);
+  const [newChapterTitle, setNewChapterTitle] = useState("");
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [showStoryWizard, setShowStoryWizard] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
 
+  // Version panel state
+  const [showVersionPanel, setShowVersionPanel] = useState<"proposals" | "snapshots" | "branches" | "history" | null>(null);
+
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ===== Derived state =====
+  const currentChapter = chapters.find((c) => c.id === selectedChapterId);
+  const selectedSpec = specs.find((s) => s.id === selectedSpecId);
+  const wordCount = selectedSpec ? specContent.length : chapterContent.length;
+  const totalWords = chapters.reduce((sum, c) => sum + c.wordCount, 0) + chapterContent.length;
+
+  // Group specs by category
+  const specsByCategory = useMemo(() => {
+    const grouped: Record<string, NovelSpec[]> = {};
+    for (const cat of SPEC_CATEGORIES) {
+      grouped[cat.value] = specs.filter((s) => s.category === cat.value);
+    }
+    return grouped;
+  }, [specs]);
+
   // ===== Data Loading =====
+  const loadSpecs = useCallback(async () => {
+    if (!selectedNovelId) return;
+    setSpecsLoading(true);
+    try {
+      const res = await fetch(`/api/specs?novelId=${selectedNovelId}`);
+      if (res.ok) setSpecs(await res.json());
+    } catch (e) {
+      console.error("Failed to load specs:", e);
+    } finally {
+      setSpecsLoading(false);
+    }
+  }, [selectedNovelId]);
+
   const loadNovelData = useCallback(async () => {
     if (!selectedNovelId) return;
     setLoading(true);
@@ -142,7 +369,6 @@ export function WorkspaceView() {
         setCurrentNovel(data);
         setChapters(data.chapters || []);
         setCharacters(data.characters || []);
-        setWorldSettings(data.worldSettings || []);
         if (data.chapters?.length > 0 && !selectedChapterId) {
           const first = data.chapters[0];
           setSelectedChapter(first.id);
@@ -157,11 +383,12 @@ export function WorkspaceView() {
     } finally {
       setLoading(false);
     }
-  }, [selectedNovelId, selectedChapterId, setCurrentNovel, setChapters, setCharacters, setWorldSettings, setSelectedChapter]);
+  }, [selectedNovelId, selectedChapterId, setCurrentNovel, setChapters, setCharacters, setSelectedChapter]);
 
   useEffect(() => {
     loadNovelData();
-  }, [loadNovelData]);
+    loadSpecs();
+  }, [loadNovelData, loadSpecs]);
 
   useEffect(() => {
     if (!selectedChapterId) return;
@@ -174,11 +401,92 @@ export function WorkspaceView() {
     }
   }, [selectedChapterId, chapters]);
 
-  useEffect(() => {
-    aiEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [aiMessages, streamingText]);
+  // ===== Navigation =====
+  function handleSelectSpec(spec: NovelSpec) {
+    setSelectedSpecId(spec.id);
+    setSpecContent(spec.content);
+    setSpecEditing(false);
+    // Don't deselect chapter - they're independent
+  }
 
-  // ===== Chapter Operations =====
+  function handleSelectChapter(chId: string) {
+    setSelectedChapter(chId);
+    // Don't deselect spec - they're independent
+  }
+
+  function handleDeselectSpec() {
+    setSelectedSpecId(null);
+    setSpecContent("");
+    setSpecEditing(false);
+  }
+
+  // ===== Spec CRUD =====
+  async function createSpec() {
+    if (!selectedNovelId || !newSpecTitle.trim()) return;
+    try {
+      const content = SPEC_TEMPLATES[newSpecCategory] || "";
+      const res = await fetch("/api/specs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          novelId: selectedNovelId,
+          category: newSpecCategory,
+          title: newSpecTitle.trim(),
+          content,
+        }),
+      });
+      if (res.ok) {
+        const spec = await res.json();
+        setShowCreateSpec(false);
+        setNewSpecTitle("");
+        setSelectedSpecId(spec.id);
+        setSpecContent(spec.content);
+        setSpecEditing(true);
+        setExpandedCategories((prev) => ({ ...prev, [newSpecCategory]: true }));
+        loadSpecs();
+      }
+    } catch (e) {
+      console.error("Failed to create spec:", e);
+    }
+  }
+
+  async function saveSpecContent() {
+    if (!selectedSpec) return;
+    setSaving(true);
+    try {
+      await fetch(`/api/specs/${selectedSpec.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: specContent }),
+      });
+      loadSpecs();
+      // Update local version
+      const updated = { ...selectedSpec, version: selectedSpec.version + 1, content: specContent };
+      // refresh from server
+    } catch (e) {
+      console.error("Failed to save spec:", e);
+    } finally {
+      setSaving(false);
+      setSpecEditing(false);
+    }
+  }
+
+  async function deleteSpec(id: string) {
+    try {
+      await fetch(`/api/specs/${id}`, { method: "DELETE" });
+      if (selectedSpecId === id) {
+        setSelectedSpecId(null);
+        setSpecContent("");
+        setSpecEditing(false);
+      }
+      setDeleteConfirmId(null);
+      loadSpecs();
+    } catch (e) {
+      console.error("Failed to delete spec:", e);
+    }
+  }
+
+  // ===== Chapter CRUD =====
   async function saveChapter() {
     if (!selectedChapterId) return;
     setSaving(true);
@@ -208,7 +516,7 @@ export function WorkspaceView() {
       });
       if (res.ok) {
         const ch = await res.json();
-        setCreatingChapter(false);
+        setShowCreateChapter(false);
         setNewChapterTitle("");
         setSelectedChapter(ch.id);
         loadNovelData();
@@ -230,33 +538,87 @@ export function WorkspaceView() {
     } catch (e) { console.error("Failed:", e); }
   }
 
-  // ===== Character & World CRUD =====
-  async function saveCharacter() {
-    if (!selectedNovelId || !charForm.name.trim()) return;
-    try {
-      await fetch("/api/characters", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...charForm, novelId: selectedNovelId }),
-      });
-      setShowCharacterDialog(false);
-      setCharForm({ name: "", role: "supporting", description: "", personality: "", appearance: "", backstory: "" });
-      loadNovelData();
-    } catch (e) { console.error("Failed:", e); }
-  }
+  // ===== AI Generation (write directly to spec) =====
+  async function handleSpecAIGenerate(category: SpecCategory) {
+    if (!selectedNovelId) return;
+    const catConfig = getCategoryConfig(category);
+    setAiGenerating(category);
 
-  async function saveWorldSetting() {
-    if (!selectedNovelId || !worldForm.name.trim()) return;
     try {
-      await fetch("/api/world-settings", {
+      const novelContext = [
+        currentNovel?.title ? `作品名：${currentNovel.title}` : "",
+        currentNovel?.genre ? `类型：${currentNovel.genre}` : "",
+        currentNovel?.description ? `简介：${currentNovel.description}` : "",
+        characters.length > 0 ? `已有角色：${characters.map((c) => `${c.name}(${c.role})`).join("、")}` : "",
+      ].filter(Boolean).join("\n");
+
+      // Also include existing specs as context
+      const existingSpecs = specs.filter((s) => s.category === category);
+      const existingContent = existingSpecs.length > 0
+        ? `\n\n现有${catConfig.label}内容（请在此基础上优化和扩展）：\n${existingSpecs[0].content.slice(0, 2000)}`
+        : "";
+
+      const res = await fetch("/api/agents/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...worldForm, novelId: selectedNovelId }),
+        body: JSON.stringify({
+          agentType: catConfig.agentType,
+          novelId: selectedNovelId,
+          message: `请为小说《${currentNovel?.title || ""}》生成完整的${catConfig.label}文档。${existingContent}`,
+          novelTitle: currentNovel?.title,
+          novelGenre: currentNovel?.genre,
+          novelDescription: currentNovel?.description,
+          characters: characters.map((c) => `${c.name}(${c.role}): ${c.description}`),
+          specCategory: category, // Tell API to auto-save to this spec category
+          stream: false,
+        }),
       });
-      setShowWorldDialog(false);
-      setWorldForm({ name: "", category: "geography", description: "" });
-      loadNovelData();
-    } catch (e) { console.error("Failed:", e); }
+
+      if (res.ok) {
+        const data = await res.json();
+        const generatedContent = data.output || data.content || data.text || "";
+
+        if (generatedContent) {
+          if (existingSpecs.length > 0) {
+            // Update existing spec
+            await fetch(`/api/specs/${existingSpecs[0].id}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ content: generatedContent }),
+            });
+            // If this spec is currently selected, update the editor
+            if (selectedSpecId === existingSpecs[0].id) {
+              setSpecContent(generatedContent);
+            }
+            setSelectedSpecId(existingSpecs[0].id);
+            setSpecContent(generatedContent);
+          } else {
+            // Create new spec
+            const newRes = await fetch("/api/specs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                novelId: selectedNovelId,
+                category,
+                title: `${currentNovel?.title || "小说"} - ${catConfig.label}`,
+                content: generatedContent,
+              }),
+            });
+            if (newRes.ok) {
+              const newSpec = await newRes.json();
+              setSelectedSpecId(newSpec.id);
+              setSpecContent(newSpec.content);
+            }
+          }
+          setExpandedCategories((prev) => ({ ...prev, [category]: true }));
+          loadSpecs();
+        }
+      }
+    } catch (e) {
+      console.error("AI generation failed:", e);
+    } finally {
+      setAiGenerating(null);
+    }
   }
 
   // ===== Export =====
@@ -267,104 +629,10 @@ export function WorkspaceView() {
     a.href = url;
     a.download = `${currentNovel?.title || "novel"}.${format}`;
     a.click();
-    setShowExportDialog(false);
     setShowExportMenu(false);
   }
 
-  // ===== AI Agent Streaming =====
-  async function sendToAgent() {
-    if (!aiMessage.trim() || isAgentRunning) return;
-    setIsAgentRunning(true);
-    const userMsg = aiMessage;
-    setAiMessage("");
-    setAiMessages((prev) => [...prev, { role: "user", content: userMsg }]);
-    setStreamingText("");
-    setAiMessages((prev) => [...prev, { role: "assistant", content: "", agentType: selectedAgent }]);
-    abortControllerRef.current = new AbortController();
-
-    try {
-      const agentConfig = agentConfigs[selectedAgent];
-      const effectiveSystemPrompt = agentConfig
-        ? agentConfig.systemPrompt + agentConfig.skills.filter((s) => s.enabled).map((s) => s.prompt).join("")
-        : undefined;
-      const temperature = agentConfig?.temperature;
-      const maxTokens = agentConfig?.maxTokens;
-      const memories = agentConfig?.memories?.map((m) => m.content).filter(Boolean);
-
-      const res = await fetch("/api/agents/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentType: selectedAgent,
-          novelId: selectedNovelId,
-          chapterId: selectedChapterId,
-          message: userMsg,
-          novelTitle: currentNovel?.title,
-          novelGenre: currentNovel?.genre,
-          novelDescription: currentNovel?.description,
-          chapterContent: ["writer", "editor", "reviewer"].includes(selectedAgent) ? chapterContent : undefined,
-          characters: characters.map((c) => `${c.name}(${c.role}): ${c.description}`),
-          model: selectedModel,
-          stream: true,
-          systemPrompt: effectiveSystemPrompt,
-          temperature,
-          maxTokens,
-          memories,
-        }),
-        signal: abortControllerRef.current.signal,
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        setAiMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: "assistant", content: `错误: ${errData.error || "生成失败"}` };
-          return updated;
-        });
-        setIsAgentRunning(false);
-        return;
-      }
-
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No reader");
-      const decoder = new TextDecoder();
-      let fullText = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        fullText += chunk;
-        setStreamingText(fullText);
-        setAiMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: "assistant", content: fullText, agentType: selectedAgent };
-          return updated;
-        });
-      }
-      setStreamingText("");
-    } catch (e: any) {
-      if (e.name !== "AbortError") {
-        setAiMessages((prev) => {
-          const updated = [...prev];
-          if (updated[updated.length - 1]?.role === "assistant" && !updated[updated.length - 1]?.content) {
-            updated[updated.length - 1] = { role: "assistant", content: "生成出错，请重试" };
-          }
-          return updated;
-        });
-      }
-    } finally {
-      setIsAgentRunning(false);
-      abortControllerRef.current = null;
-    }
-  }
-
-  // ===== Derived State =====
-  const currentChapter = chapters.find((c) => c.id === selectedChapterId);
-  const wordCount = chapterContent.length;
-  const totalWords = chapters.reduce((sum, c) => sum + c.wordCount, 0) + chapterContent.length;
-
-  // ===== No novel selected: beautiful landing =====
+  // ===== No novel selected =====
   if (!selectedNovelId) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-6 p-6">
@@ -389,7 +657,7 @@ export function WorkspaceView() {
     );
   }
 
-  // ===== Loading state =====
+  // ===== Loading =====
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -401,18 +669,12 @@ export function WorkspaceView() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-[calc(100vh-3.5rem)]">
-        {/* ===== Top Toolbar (44px) ===== */}
+        {/* ===== Top Bar ===== */}
         <header className="flex items-center justify-between h-11 px-2 flex-shrink-0 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          {/* Left: Back + Novel Info */}
           <div className="flex items-center gap-2 min-w-0">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 flex-shrink-0"
-                  onClick={() => setCurrentView("novels")}
-                >
+                <Button variant="ghost" size="icon" className="size-8 flex-shrink-0" onClick={() => setCurrentView("novels")}>
                   <ArrowLeft className="size-4" />
                 </Button>
               </TooltipTrigger>
@@ -420,70 +682,234 @@ export function WorkspaceView() {
             </Tooltip>
 
             <div className="min-w-0 flex items-center gap-2">
-              <h2 className="text-sm font-semibold truncate max-w-[200px]">
-                {currentNovel?.title}
-              </h2>
-              {currentChapter && (
+              <h2 className="text-sm font-semibold truncate max-w-[200px]">{currentNovel?.title}</h2>
+              {selectedChapter && (
                 <>
                   <span className="text-muted-foreground/50">·</span>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {currentChapter.title}
-                  </span>
+                  <span className="text-xs text-muted-foreground truncate">{currentChapter?.title}</span>
+                </>
+              )}
+              {selectedSpec && (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className="text-xs text-muted-foreground truncate">{selectedSpec.title}</span>
                 </>
               )}
             </div>
           </div>
 
-          {/* Right: Tool buttons */}
           <div className="flex items-center gap-0.5">
-            <ToolbarButton icon={<Users className="size-4" />} tooltip="角色管理" onClick={() => setShowCharacterSheet(true)} />
-            <ToolbarButton icon={<Globe className="size-4" />} tooltip="世界观管理" onClick={() => setShowWorldSheet(true)} />
-            <ToolbarButton icon={<GitBranch className="size-4" />} tooltip="版本管理" onClick={() => setShowVersionSheet(true)} />
+            <ToolbarButton icon={<Wand2 className="size-4" />} tooltip="AI 一键创作" onClick={() => setShowStoryWizard(true)} />
             <ToolbarButton icon={<MessageSquare className="size-4" />} tooltip="AI 助手" onClick={() => setShowAiAssistant(true)} />
 
             <div className="w-px h-5 bg-border mx-1" />
 
-            {/* Export dropdown */}
             <DropdownMenu open={showExportMenu} onOpenChange={setShowExportMenu}>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8">
-                  <Download className="size-4" />
-                </Button>
+                <Button variant="ghost" size="icon" className="size-8"><Download className="size-4" /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handleExport("txt")}>
-                  <FileText className="size-3.5 mr-2" />纯文本 (.txt)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExport("md")}>
-                  <FileText className="size-3.5 mr-2" />Markdown (.md)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExport("json")}>
-                  <FileText className="size-3.5 mr-2" />JSON (.json)
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("txt")}><FileText className="size-3.5 mr-2" />纯文本 (.txt)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("md")}><FileText className="size-3.5 mr-2" />Markdown (.md)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("json")}><FileText className="size-3.5 mr-2" />JSON (.json)</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Save button */}
             <ToolbarButton
               icon={saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
               tooltip={saving ? "保存中..." : "保存"}
-              onClick={saveChapter}
-              disabled={saving || !selectedChapterId}
+              onClick={() => { if (selectedSpecId) saveSpecContent(); else saveChapter(); }}
+              disabled={saving}
             />
           </div>
         </header>
 
-        {/* ===== Main Content Area ===== */}
-        <main className="flex-1 overflow-hidden">
-          {currentChapter ? (
-            <div className="flex flex-col h-full">
-              {/* Chapter editor: centered, beautiful typography */}
-              <div className="flex-1 overflow-y-auto">
-                <div className="max-w-3xl mx-auto px-6 py-10 md:py-16">
-                  {/* Status chip */}
-                  <div className="mb-6">
+        {/* ===== Main Body: Sidebar + Content ===== */}
+        <div className="flex flex-1 min-h-0">
+          {/* ===== Left Sidebar ===== */}
+          <aside className="w-56 lg:w-64 border-r flex-shrink-0 flex flex-col bg-muted/20">
+            {/* Spec Categories */}
+            <ScrollArea className="flex-1">
+              <div className="p-2">
+                {SPEC_CATEGORIES.map((cat) => {
+                  const catSpecs = specsByCategory[cat.value] || [];
+                  const isExpanded = expandedCategories[cat.value] !== false;
+                  const CatIcon = cat.icon;
+                  const isGenerating = aiGenerating === cat.value;
+
+                  return (
+                    <div key={cat.value} className="mb-1">
+                      {/* Category header */}
+                      <div
+                        className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:bg-muted/60 cursor-pointer transition-colors"
+                        onClick={() => setExpandedCategories((prev) => ({ ...prev, [cat.value]: !isExpanded }))}
+                      >
+                        <ChevronRight className={cn("size-3 transition-transform flex-shrink-0", isExpanded && "rotate-90")} />
+                        <CatIcon className={cn("size-3.5", cat.color)} />
+                        <span className="flex-1">{cat.label}</span>
+                        <Badge variant="secondary" className="text-[9px] h-4 px-1 min-w-[16px] justify-center">
+                          {catSpecs.length}
+                        </Badge>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              className={cn(
+                                "size-5 rounded flex items-center justify-center flex-shrink-0 transition-colors hover:bg-background",
+                                isGenerating && "animate-pulse"
+                              )}
+                              onClick={(e) => { e.stopPropagation(); handleSpecAIGenerate(cat.value); }}
+                              disabled={isGenerating}
+                            >
+                              {isGenerating ? (
+                                <Loader2 className="size-3 animate-spin text-primary" />
+                              ) : (
+                                <Sparkles className="size-3 text-muted-foreground hover:text-primary" />
+                              )}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">AI {cat.aiLabel}</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              className="size-5 rounded flex items-center justify-center flex-shrink-0 transition-colors hover:bg-background"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNewSpecCategory(cat.value);
+                                setNewSpecTitle("");
+                                setShowCreateSpec(true);
+                              }}
+                            >
+                              <Plus className="size-3 text-muted-foreground" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">新建{cat.label}文档</TooltipContent>
+                        </Tooltip>
+                      </div>
+
+                      {/* Spec items */}
+                      {isExpanded && (
+                        <div className="ml-4 space-y-0.5">
+                          {specsLoading ? (
+                            <div className="space-y-1.5 px-1 py-1">
+                              <div className="h-6 bg-muted/50 rounded animate-pulse" />
+                              <div className="h-6 bg-muted/50 rounded w-3/4 animate-pulse" />
+                            </div>
+                          ) : catSpecs.length === 0 ? (
+                            <p className="text-[10px] text-muted-foreground/60 px-2 py-1">暂无文档</p>
+                          ) : (
+                            catSpecs.map((spec) => (
+                              <div
+                                key={spec.id}
+                                className={cn(
+                                  "group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs cursor-pointer transition-all",
+                                  selectedSpecId === spec.id
+                                    ? "bg-primary/10 text-primary font-medium"
+                                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                                )}
+                                onClick={() => handleSelectSpec(spec)}
+                              >
+                                <div className={cn(
+                                  "size-1.5 rounded-full flex-shrink-0",
+                                  selectedSpecId === spec.id ? "bg-primary" : "bg-muted-foreground/30"
+                                )} />
+                                <span className="flex-1 truncate">{spec.title}</span>
+                                <Badge variant="outline" className="text-[9px] h-3.5 px-1 opacity-70 flex-shrink-0">
+                                  v{spec.version}
+                                </Badge>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Separator */}
+                <Separator className="my-3" />
+
+                {/* Chapters */}
+                <div className="mb-1">
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium text-muted-foreground mb-1">
+                    <BookMarked className="size-3.5 text-foreground/70" />
+                    <span className="flex-1">章节</span>
+                    <Badge variant="secondary" className="text-[9px] h-4 px-1 min-w-[16px] justify-center">
+                      {chapters.length}
+                    </Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          className="size-5 rounded flex items-center justify-center flex-shrink-0 transition-colors hover:bg-background"
+                          onClick={() => { setNewChapterTitle(""); setShowCreateChapter(true); }}
+                        >
+                          <Plus className="size-3 text-muted-foreground" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">新建章节</TooltipContent>
+                    </Tooltip>
+                  </div>
+
+                  <div className="space-y-0.5">
+                    {chapters.length === 0 ? (
+                      <p className="text-[10px] text-muted-foreground/60 px-2 py-1">暂无章节</p>
+                    ) : (
+                      chapters.map((ch) => (
+                        <div
+                          key={ch.id}
+                          className={cn(
+                            "group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs cursor-pointer transition-all",
+                            selectedChapterId === ch.id
+                              ? "bg-primary/10 text-primary font-medium"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                          )}
+                          onClick={() => handleSelectChapter(ch.id)}
+                        >
+                          <div className={cn(
+                            "size-1.5 rounded-full flex-shrink-0",
+                            selectedChapterId === ch.id ? "bg-primary" : "bg-muted-foreground/30"
+                          )} />
+                          <span className="text-[10px] text-muted-foreground/60 w-4 flex-shrink-0">{ch.chapterNumber}</span>
+                          <span className="flex-1 truncate">{ch.title}</span>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 size-4 rounded flex items-center justify-center flex-shrink-0 transition-opacity hover:bg-destructive/10"
+                            onClick={(e) => { e.stopPropagation(); deleteChapter(ch.id); }}
+                          >
+                            <Trash2 className="size-2.5 text-destructive/60" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </ScrollArea>
+          </aside>
+
+          {/* ===== Main Content Area ===== */}
+          <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {selectedSpec ? (
+              /* ===== Spec Document Editor ===== */
+              <SpecEditor
+                spec={selectedSpec}
+                specContent={specContent}
+                setSpecContent={setSpecContent}
+                specEditing={specEditing}
+                setSpecEditing={setSpecEditing}
+                saving={saving}
+                onSave={saveSpecContent}
+                onCopy={() => navigator.clipboard.writeText(specContent)}
+                onDelete={() => setDeleteConfirmId(selectedSpec.id)}
+                onDeselect={handleDeselectSpec}
+              />
+            ) : currentChapter ? (
+              /* ===== Chapter Editor ===== */
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                {/* Chapter toolbar */}
+                <div className="flex items-center justify-between px-6 py-2 border-b flex-shrink-0">
+                  <div className="flex items-center gap-2">
                     <span className={cn(
-                      "inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-medium",
+                      "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium",
                       chapterStatus === "completed" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
                       chapterStatus === "writing" && "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
                       chapterStatus === "review" && "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
@@ -491,131 +917,253 @@ export function WorkspaceView() {
                     )}>
                       {CHAPTER_STATUS_MAP[chapterStatus as keyof typeof CHAPTER_STATUS_MAP]?.label || "草稿"}
                     </span>
+                    <span className="text-xs text-muted-foreground">
+                      第 {currentChapter.chapterNumber} 章
+                    </span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Select value={chapterStatus} onValueChange={(v) => { setChapterStatus(v); saveChapter(); }}>
+                      <SelectTrigger className="h-7 w-24 text-xs border-none shadow-none bg-transparent">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">草稿</SelectItem>
+                        <SelectItem value="writing">写作中</SelectItem>
+                        <SelectItem value="review">审核中</SelectItem>
+                        <SelectItem value="completed">已完成</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-                  {/* Chapter title (inline-editable) */}
-                  <Input
-                    value={chapterTitle}
-                    onChange={(e) => setChapterTitle(e.target.value)}
-                    onBlur={saveChapter}
-                    className="text-2xl md:text-3xl font-bold border-none shadow-none px-0 h-auto focus-visible:ring-0 bg-transparent placeholder:text-muted-foreground/40 mb-8"
-                    placeholder="章节标题"
-                  />
-
-                  {/* Chapter body */}
-                  <Textarea
-                    value={chapterContent}
-                    onChange={(e) => handleContentChange(e.target.value)}
-                    className="min-h-[60vh] w-full resize-none border-none shadow-none bg-transparent text-base leading-[1.8] font-serif focus-visible:ring-0 placeholder:text-muted-foreground/40 selection:bg-primary/20"
-                    placeholder="开始写作..."
-                    rows={40}
-                  />
+                {/* Chapter content */}
+                <div className="flex-1 overflow-y-auto">
+                  <div className="max-w-3xl mx-auto px-6 py-10 md:py-16">
+                    <Input
+                      value={chapterTitle}
+                      onChange={(e) => setChapterTitle(e.target.value)}
+                      onBlur={saveChapter}
+                      className="text-2xl md:text-3xl font-bold border-none shadow-none px-0 h-auto focus-visible:ring-0 bg-transparent placeholder:text-muted-foreground/40 mb-8"
+                      placeholder="章节标题"
+                    />
+                    <Textarea
+                      value={chapterContent}
+                      onChange={(e) => handleContentChange(e.target.value)}
+                      className="min-h-[60vh] w-full resize-none border-none shadow-none bg-transparent text-base leading-[1.8] font-serif focus-visible:ring-0 placeholder:text-muted-foreground/40 selection:bg-primary/20"
+                      placeholder="开始写作..."
+                      rows={40}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            /* ===== Empty State: No chapter selected ===== */
-            <div className="flex flex-col items-center justify-center h-full gap-6">
-              <div className="size-20 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/20 dark:to-orange-900/20 flex items-center justify-center">
-                <PenLine className="size-9 text-amber-500" />
-              </div>
-              <div className="text-center max-w-md">
-                <h3 className="text-lg font-semibold mb-2">开始你的创作</h3>
-                <p className="text-sm text-muted-foreground mb-6">
-                  选择章节继续写作，或使用 AI 一键生成
-                </p>
-                <div className="flex gap-3 justify-center">
-                  <Button size="lg" onClick={() => setShowStoryWizard(true)}>
-                    <Sparkles className="size-4 mr-2" />一键创作
-                  </Button>
-                  <Button size="lg" variant="outline" onClick={() => setCreatingChapter(true)}>
-                    <Plus className="size-4 mr-2" />新建章节
-                  </Button>
+            ) : (
+              /* ===== Empty State ===== */
+              <div className="flex-1 flex flex-col items-center justify-center gap-6">
+                <div className="size-20 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/20 dark:to-orange-900/20 flex items-center justify-center">
+                  <PenLine className="size-9 text-amber-500" />
+                </div>
+                <div className="text-center max-w-md">
+                  <h3 className="text-lg font-semibold mb-2">开始你的创作</h3>
+                  <p className="text-sm text-muted-foreground mb-6">
+                    创建规格文档规划故事，选择章节开始写作，或使用 AI 一键生成
+                  </p>
+                  <div className="flex gap-3 justify-center">
+                    <Button size="lg" onClick={() => setShowStoryWizard(true)}>
+                      <Sparkles className="size-4 mr-2" />一键创作
+                    </Button>
+                    <Button size="lg" variant="outline" onClick={() => { setNewSpecCategory("outline"); setNewSpecTitle(""); setShowCreateSpec(true); }}>
+                      <Plus className="size-4 mr-2" />新建规格
+                    </Button>
+                    <Button size="lg" variant="outline" onClick={() => { setNewChapterTitle(""); setShowCreateChapter(true); }}>
+                      <Plus className="size-4 mr-2" />新建章节
+                    </Button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </main>
+            )}
+          </main>
+        </div>
 
-        {/* ===== Bottom Chapter Bar (48px, glass-morphism) ===== */}
-        <footer className="flex items-center h-12 px-2 gap-2 flex-shrink-0 bg-background/80 backdrop-blur-lg border-t">
-          {/* Chapter pills: horizontal scrollable */}
-          <div className="flex items-center gap-1 flex-1 overflow-x-auto no-scrollbar">
-            {chapters.map((ch) => (
-              <button
-                key={ch.id}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap flex-shrink-0",
-                  selectedChapterId === ch.id
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                )}
-                onClick={() => setSelectedChapter(ch.id)}
-              >
-                <span>{ch.chapterNumber}</span>
-                <span className="max-w-[80px] truncate">{ch.title}</span>
-              </button>
-            ))}
-
-            {/* Add chapter button */}
-            <button
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all flex-shrink-0"
-              onClick={() => setCreatingChapter(true)}
-            >
-              <Plus className="size-3" />
-            </button>
+        {/* ===== Bottom Status Bar ===== */}
+        <footer className="flex items-center h-9 px-3 gap-2 flex-shrink-0 border-t bg-muted/30">
+          {/* Version tools */}
+          <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn("h-6 px-2 text-[11px] gap-1", showVersionPanel === "proposals" && "bg-muted")}
+                  onClick={() => setShowVersionPanel(showVersionPanel === "proposals" ? null : "proposals")}
+                >
+                  <GitCompare className="size-3" />
+                  <span className="hidden sm:inline">提案</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>变更提案</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn("h-6 px-2 text-[11px] gap-1", showVersionPanel === "snapshots" && "bg-muted")}
+                  onClick={() => setShowVersionPanel(showVersionPanel === "snapshots" ? null : "snapshots")}
+                >
+                  <GitCommit className="size-3" />
+                  <span className="hidden sm:inline">快照</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>版本快照</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn("h-6 px-2 text-[11px] gap-1", showVersionPanel === "branches" && "bg-muted")}
+                  onClick={() => setShowVersionPanel(showVersionPanel === "branches" ? null : "branches")}
+                >
+                  <GitBranch className="size-3" />
+                  <span className="hidden sm:inline">分支</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>分支管理</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn("h-6 px-2 text-[11px] gap-1", showVersionPanel === "history" && "bg-muted")}
+                  onClick={() => setShowVersionPanel(showVersionPanel === "history" ? null : "history")}
+                >
+                  <History className="size-3" />
+                  <span className="hidden sm:inline">历史</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>规格变更历史</TooltipContent>
+            </Tooltip>
           </div>
 
-          {/* Word count + auto-save */}
-          <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-shrink-0">
-            {currentChapter && (
-              <span>{wordCount.toLocaleString()} 字</span>
-            )}
+          <div className="flex-1" />
+
+          {/* Word count + status */}
+          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+            {selectedSpecId && <span>{wordCount.toLocaleString()} 字</span>}
+            {selectedChapterId && currentChapter && <span>{chapterContent.length.toLocaleString()} 字</span>}
+            {totalWords > 0 && <span>共 {totalWords.toLocaleString()} 字</span>}
             <span className="flex items-center gap-1">
               {saving ? (
-                <>
-                  <Loader2 className="size-3 animate-spin" />
-                  <span>保存中</span>
-                </>
+                <><Loader2 className="size-3 animate-spin" /><span>保存中</span></>
               ) : (
-                <span>已保存</span>
+                <span className="flex items-center gap-1"><div className="size-1.5 rounded-full bg-emerald-500" /><span>已保存</span></span>
               )}
             </span>
           </div>
         </footer>
 
-        {/* ===== Sheet Panels ===== */}
-        <Sheet open={showCharacterSheet} onOpenChange={setShowCharacterSheet}>
-          <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>角色管理</SheetTitle>
-              <SheetDescription>管理作品中的角色设定</SheetDescription>
-            </SheetHeader>
-            <CharacterSheet novelId={selectedNovelId!} />
-          </SheetContent>
-        </Sheet>
+        {/* ===== Version Panel (slide-up from bottom bar) ===== */}
+        {showVersionPanel && (
+          <VersionPanel
+            novelId={selectedNovelId!}
+            type={showVersionPanel}
+            onClose={() => setShowVersionPanel(null)}
+          />
+        )}
 
-        <Sheet open={showWorldSheet} onOpenChange={setShowWorldSheet}>
-          <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>世界观管理</SheetTitle>
-              <SheetDescription>管理作品的世界观设定</SheetDescription>
-            </SheetHeader>
-            <WorldSheet novelId={selectedNovelId!} />
-          </SheetContent>
-        </Sheet>
+        {/* ===== Dialogs ===== */}
 
-        <Sheet open={showVersionSheet} onOpenChange={setShowVersionSheet}>
-          <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>版本管理</SheetTitle>
-              <SheetDescription>查看和管理作品版本</SheetDescription>
-            </SheetHeader>
-            <VersionSheet novelId={selectedNovelId!} />
-          </SheetContent>
-        </Sheet>
+        {/* Create Spec Dialog */}
+        <Dialog open={showCreateSpec} onOpenChange={setShowCreateSpec}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>新建规格文档</DialogTitle>
+              <DialogDescription>为小说创建规格文档，记录设定和规划</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3 py-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">文档类别</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {SPEC_CATEGORIES.map((cat) => {
+                    const CatIcon = cat.icon;
+                    return (
+                      <button
+                        key={cat.value}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border",
+                          newSpecCategory === cat.value
+                            ? cn(cat.bgColor, cat.color, "border-current/20")
+                            : "bg-background text-muted-foreground hover:bg-muted border-transparent"
+                        )}
+                        onClick={() => setNewSpecCategory(cat.value)}
+                      >
+                        <CatIcon className="size-3" />
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">文档标题 *</label>
+                <Input
+                  value={newSpecTitle}
+                  onChange={(e) => setNewSpecTitle(e.target.value)}
+                  placeholder={`例如：${SPEC_TEMPLATES[newSpecCategory]?.split("\n")[0]?.replace("# ", "") || "文档标题"}`}
+                  onKeyDown={(e) => { if (e.key === "Enter") createSpec(); }}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCreateSpec(false)}>取消</Button>
+              <Button onClick={createSpec} disabled={!newSpecTitle.trim()}>
+                <Plus className="size-3.5 mr-1" />创建
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-        {/* AI Assistant Drawer (bottom) */}
+        {/* Create Chapter Dialog */}
+        <Dialog open={showCreateChapter} onOpenChange={setShowCreateChapter}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>创建新章节</DialogTitle>
+              <DialogDescription>为作品添加新章节</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-3 py-3">
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">章节标题（可选）</label>
+                <Input
+                  value={newChapterTitle}
+                  onChange={(e) => setNewChapterTitle(e.target.value)}
+                  placeholder="留空自动编号"
+                  onKeyDown={(e) => { if (e.key === "Enter") createChapter(); }}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCreateChapter(false)}>取消</Button>
+              <Button onClick={createChapter}>创建</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirm Dialog */}
+        <Dialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>确认删除</DialogTitle>
+              <DialogDescription>此操作不可撤销，确定要删除这份规格文档吗？</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>取消</Button>
+              <Button variant="destructive" onClick={() => { if (deleteConfirmId) deleteSpec(deleteConfirmId); }}>删除</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* AI Assistant Drawer */}
         <Sheet open={showAiAssistant} onOpenChange={setShowAiAssistant}>
           <SheetContent side="bottom" className="h-[70vh] rounded-t-2xl">
             <SheetHeader>
@@ -627,83 +1175,328 @@ export function WorkspaceView() {
         </Sheet>
 
         {/* Story Wizard */}
-        <StoryWizard open={showStoryWizard} onOpenChange={setShowStoryWizard} novelId={selectedNovelId!} onComplete={() => { setShowStoryWizard(false); loadNovelData(); }} />
+        <StoryWizard
+          open={showStoryWizard}
+          onOpenChange={setShowStoryWizard}
+          novelId={selectedNovelId!}
+          onComplete={() => { setShowStoryWizard(false); loadNovelData(); loadSpecs(); }}
+        />
 
-        {/* ===== Existing Dialogs ===== */}
-
-        {/* Create Character Dialog */}
-        <Dialog open={showCharacterDialog} onOpenChange={setShowCharacterDialog}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader><DialogTitle>添加角色</DialogTitle><DialogDescription>为新作品创建角色设定</DialogDescription></DialogHeader>
-            <div className="grid gap-3 py-3">
-              <div><label className="text-xs text-muted-foreground mb-1 block">角色名称 *</label><Input value={charForm.name} onChange={(e) => setCharForm({ ...charForm, name: e.target.value })} placeholder="如：李明" /></div>
-              <div><label className="text-xs text-muted-foreground mb-1 block">角色定位 *</label>
-                <Select value={charForm.role} onValueChange={(v: any) => setCharForm({ ...charForm, role: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="protagonist">主角</SelectItem>
-                    <SelectItem value="antagonist">反派</SelectItem>
-                    <SelectItem value="supporting">配角</SelectItem>
-                    <SelectItem value="minor">龙套</SelectItem>
-                  </SelectContent>
-                </Select>
+        {/* AI Generating Overlay */}
+        {aiGenerating && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+            <div className="bg-background rounded-xl shadow-2xl p-6 flex flex-col items-center gap-3 max-w-sm mx-4">
+              <div className={cn(
+                "size-12 rounded-full flex items-center justify-center animate-pulse",
+                getCategoryConfig(aiGenerating).bgColor
+              )}>
+                <Loader2 className={cn("size-6 animate-spin", getCategoryConfig(aiGenerating).color)} />
               </div>
-              <div><label className="text-xs text-muted-foreground mb-1 block">角色描述</label><Textarea value={charForm.description} onChange={(e) => setCharForm({ ...charForm, description: e.target.value })} rows={2} placeholder="简要描述角色特征..." /></div>
-              <div><label className="text-xs text-muted-foreground mb-1 block">性格特点</label><Textarea value={charForm.personality} onChange={(e) => setCharForm({ ...charForm, personality: e.target.value })} rows={2} placeholder="性格关键词，逗号分隔..." /></div>
+              <p className="text-sm font-medium">AI 正在生成{getCategoryConfig(aiGenerating).label}文档...</p>
+              <p className="text-xs text-muted-foreground text-center">
+                正在调用 {getCategoryConfig(aiGenerating).aiLabel.replace("生成", "")} Agent 分析并生成内容
+              </p>
             </div>
-            <DialogFooter><Button variant="outline" onClick={() => setShowCharacterDialog(false)}>取消</Button><Button onClick={saveCharacter} disabled={!charForm.name.trim()}>添加</Button></DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Create World Setting Dialog */}
-        <Dialog open={showWorldDialog} onOpenChange={setShowWorldDialog}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader><DialogTitle>添加世界观设定</DialogTitle><DialogDescription>创建世界观的组成要素</DialogDescription></DialogHeader>
-            <div className="grid gap-3 py-3">
-              <div><label className="text-xs text-muted-foreground mb-1 block">设定名称 *</label><Input value={worldForm.name} onChange={(e) => setWorldForm({ ...worldForm, name: e.target.value })} placeholder="如：天玄大陆" /></div>
-              <div><label className="text-xs text-muted-foreground mb-1 block">分类 *</label>
-                <Select value={worldForm.category} onValueChange={(v: any) => setWorldForm({ ...worldForm, category: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="geography">地理环境</SelectItem>
-                    <SelectItem value="history">历史纪年</SelectItem>
-                    <SelectItem value="culture">文化风俗</SelectItem>
-                    <SelectItem value="magic">魔法体系</SelectItem>
-                    <SelectItem value="technology">科技设定</SelectItem>
-                    <SelectItem value="other">其他</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div><label className="text-xs text-muted-foreground mb-1 block">详细描述</label><Textarea value={worldForm.description} onChange={(e) => setWorldForm({ ...worldForm, description: e.target.value })} rows={3} placeholder="描述这个设定的详细内容..." /></div>
-            </div>
-            <DialogFooter><Button variant="outline" onClick={() => setShowWorldDialog(false)}>取消</Button><Button onClick={saveWorldSetting} disabled={!worldForm.name.trim()}>添加</Button></DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Create Chapter Dialog */}
-        <Dialog open={creatingChapter} onOpenChange={setCreatingChapter}>
-          <DialogContent className="sm:max-w-sm">
-            <DialogHeader><DialogTitle>创建新章节</DialogTitle><DialogDescription>为作品添加新章节</DialogDescription></DialogHeader>
-            <div className="grid gap-3 py-3">
-              <div><label className="text-xs text-muted-foreground mb-1 block">章节标题（可选）</label><Input value={newChapterTitle} onChange={(e) => setNewChapterTitle(e.target.value)} placeholder="留空自动编号" onKeyDown={(e) => { if (e.key === "Enter") createChapter(); }} /></div>
-            </div>
-            <DialogFooter><Button variant="outline" onClick={() => setCreatingChapter(false)}>取消</Button><Button onClick={createChapter}>创建</Button></DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Export Dialog */}
-        <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
-          <DialogContent className="sm:max-w-sm">
-            <DialogHeader><DialogTitle>导出作品</DialogTitle><DialogDescription>选择导出格式</DialogDescription></DialogHeader>
-            <div className="grid gap-2 py-3">
-              <Button variant="outline" className="justify-start gap-2" onClick={() => handleExport("txt")}><FileText className="size-4" />纯文本 (.txt)</Button>
-              <Button variant="outline" className="justify-start gap-2" onClick={() => handleExport("md")}><FileText className="size-4" />Markdown (.md)</Button>
-              <Button variant="outline" className="justify-start gap-2" onClick={() => handleExport("json")}><FileText className="size-4" />JSON (.json)</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+          </div>
+        )}
       </div>
     </TooltipProvider>
+  );
+}
+
+// ===== Spec Editor Sub-Component =====
+function SpecEditor({
+  spec,
+  specContent,
+  setSpecContent,
+  specEditing,
+  setSpecEditing,
+  saving,
+  onSave,
+  onCopy,
+  onDelete,
+  onDeselect,
+}: {
+  spec: NovelSpec;
+  specContent: string;
+  setSpecContent: (v: string) => void;
+  specEditing: boolean;
+  setSpecEditing: (v: boolean) => void;
+  saving: boolean;
+  onSave: () => void;
+  onCopy: () => void;
+  onDelete: () => void;
+  onDeselect: () => void;
+}) {
+  const catConfig = getCategoryConfig(spec.category);
+  const CatIcon = catConfig.icon;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Spec toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+            onClick={onDeselect}
+          >
+            <ArrowLeft className="size-3" />
+            <span className="hidden sm:inline">返回</span>
+          </button>
+          <div className="w-px h-4 bg-border" />
+          <div className={cn("size-6 rounded-md flex items-center justify-center", catConfig.bgColor)}>
+            <CatIcon className={cn("size-3.5", catConfig.color)} />
+          </div>
+          <div className="min-w-0 flex items-center gap-2">
+            <span className="text-sm font-medium truncate">{spec.title}</span>
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5 flex-shrink-0">v{spec.version}</Badge>
+            {spec.status === "active" && (
+              <Badge className="text-[9px] h-4 px-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">活跃</Badge>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <ToolbarButton
+            icon={specEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
+            tooltip={specEditing ? "预览" : "编辑"}
+            onClick={() => setSpecEditing(!specEditing)}
+          />
+          <ToolbarButton icon={<Copy className="size-3.5" />} tooltip="复制" onClick={onCopy} />
+          <Button
+            size="sm"
+            variant={specEditing ? "default" : "outline"}
+            className="h-7 text-xs gap-1"
+            onClick={onSave}
+            disabled={saving || !specEditing}
+          >
+            {saving ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
+            {saving ? "保存中" : specEditing ? "保存" : "保存"}
+          </Button>
+          <ToolbarButton icon={<Trash2 className="size-3.5" />} tooltip="删除" onClick={onDelete} className="text-destructive/60 hover:text-destructive" />
+        </div>
+      </div>
+
+      {/* Spec content */}
+      <div className="flex-1 overflow-y-auto">
+        {specEditing ? (
+          <div className="p-4 md:p-6">
+            <Textarea
+              value={specContent}
+              onChange={(e) => setSpecContent(e.target.value)}
+              className="min-h-full w-full resize-none font-mono text-xs leading-relaxed border-0 focus-visible:ring-0 bg-transparent"
+              placeholder="开始编写内容..."
+              rows={40}
+            />
+          </div>
+        ) : (
+          <div className="p-4 md:p-6">
+            {/* Category-specific preview */}
+            {spec.category === "outline" ? (
+              <OutlinePreview content={specContent} />
+            ) : (
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed font-mono">
+                  {specContent || <span className="text-muted-foreground/50">点击编辑按钮开始编写内容...</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Spec status bar */}
+      <div className="flex items-center justify-between px-4 py-1.5 border-t text-[11px] text-muted-foreground flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <span>{specContent.length.toLocaleString()} 字</span>
+          <span>更新于 {spec.updatedAt ? new Date(spec.updatedAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</span>
+        </div>
+        <span>{specEditing ? "编辑中" : "预览模式"}</span>
+      </div>
+    </div>
+  );
+}
+
+// ===== Outline Preview (three-act structure) =====
+function OutlinePreview({ content }: { content: string }) {
+  const acts = useMemo(() => {
+    const result: { num: number; title: string; content: string }[] = [];
+    const pattern = /###\s*第([一二三1-3])幕[：:]?\s*(.*)/g;
+    let match;
+    const sections: { index: number; num: number; title: string; end: number }[] = [];
+
+    while ((match = pattern.exec(content)) !== null) {
+      if (sections.length > 0) sections[sections.length - 1].end = match.index;
+      const numStr = match[1];
+      const num = numStr === "一" || numStr === "1" ? 1 : numStr === "二" || numStr === "2" ? 2 : 3;
+      sections.push({ index: match.index, num, title: match[2] || (num === 1 ? "起" : num === 2 ? "承转" : "合"), end: content.length });
+    }
+
+    for (const s of sections) {
+      result.push({ num: s.num, title: s.title, content: content.slice(s.index, s.end).trim() });
+    }
+    return result;
+  }, [content]);
+
+  const ACT_STYLES: Record<number, { border: string; bg: string; text: string }> = {
+    1: { border: "border-l-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-950/30", text: "text-emerald-700 dark:text-emerald-300" },
+    2: { border: "border-l-amber-500", bg: "bg-amber-50 dark:bg-amber-950/30", text: "text-amber-700 dark:text-amber-300" },
+    3: { border: "border-l-rose-500", bg: "bg-rose-50 dark:bg-rose-950/30", text: "text-rose-700 dark:text-rose-300" },
+  };
+
+  if (acts.length === 0) {
+    return (
+      <div className="prose prose-sm dark:prose-invert max-w-none">
+        <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed font-mono">
+          {content || <span className="text-muted-foreground/50">暂无大纲内容</span>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Foreshadowing summary (extracted from tables) */}
+      {content.includes("伏笔") && (
+        <div className="mb-2">
+          <div className="flex items-center gap-2 mb-2">
+            <Target className="size-3.5 text-amber-500" />
+            <span className="text-xs font-semibold">伏笔追踪</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            {(() => {
+              const lines = content.split("\n");
+              const items: string[] = [];
+              let inTable = false;
+              for (const line of lines) {
+                if (line.includes("伏笔") && line.includes("|")) { inTable = true; continue; }
+                if (inTable && (line.startsWith("##") || line.startsWith("###"))) break;
+                if (inTable && line.startsWith("|") && !line.match(/^[\s|:-]+$/)) {
+                  const cells = line.split("|").filter(Boolean).map(c => c.trim());
+                  if (cells[0] && cells[0] !== "伏笔") items.push(cells[0]);
+                }
+              }
+              return items.length > 0 ? items.map((item, i) => (
+                <div key={i} className="px-2.5 py-1.5 rounded-md bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 font-medium truncate">
+                  {item}
+                </div>
+              )) : null;
+            })()}
+          </div>
+        </div>
+      )}
+
+      {acts.map((act) => {
+        const style = ACT_STYLES[act.num] || ACT_STYLES[1];
+        return (
+          <div key={act.num} className={cn("rounded-lg border border-l-4 p-4", style.border, style.bg)}>
+            <h3 className={cn("text-sm font-semibold mb-2", style.text)}>
+              第{act.num === 1 ? "一" : act.num === 2 ? "二" : "三"}幕：{act.title}
+            </h3>
+            <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+              {act.content.replace(/^###\s*第[一二三1-3]幕[：:]?\s*(.*)\n?/, "").trim()}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ===== Version Panel (bottom slide-up) =====
+function VersionPanel({
+  novelId,
+  type,
+  onClose,
+}: {
+  novelId: string;
+  type: "proposals" | "snapshots" | "branches" | "history";
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const endpoints: Record<string, string> = {
+      proposals: `/api/proposals?novelId=${novelId}`,
+      snapshots: `/api/snapshots?novelId=${novelId}`,
+      branches: `/api/branches?novelId=${novelId}`,
+      history: `/api/specs?novelId=${novelId}`,
+    };
+
+    fetch(endpoints[type])
+      .then((r) => r.ok ? r.json() : [])
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [novelId, type]);
+
+  const labels: Record<string, string> = {
+    proposals: "变更提案",
+    snapshots: "版本快照",
+    branches: "分支",
+    history: "规格历史",
+  };
+
+  const icons: Record<string, typeof GitCompare> = {
+    proposals: GitCompare,
+    snapshots: GitCommit,
+    branches: GitBranch,
+    history: History,
+  };
+
+  const Icon = icons[type];
+
+  return (
+    <div className="border-t bg-background shadow-2xl max-h-[40vh] flex flex-col flex-shrink-0">
+      {/* Panel header */}
+      <div className="flex items-center justify-between px-4 py-2 border-b flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <Icon className="size-4 text-primary" />
+          <span className="text-sm font-semibold">{labels[type]}</span>
+          <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{data.length}</Badge>
+        </div>
+        <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={onClose}>
+          关闭
+        </Button>
+      </div>
+
+      {/* Panel content */}
+      <ScrollArea className="flex-1">
+        {loading ? (
+          <div className="flex items-center justify-center h-20">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : data.length === 0 ? (
+          <div className="text-center py-10">
+            <Icon className="size-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-xs text-muted-foreground">暂无数据</p>
+          </div>
+        ) : (
+          <div className="p-3 space-y-1.5">
+            {data.map((item: any) => (
+              <div key={item.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-xs">
+                <div className="size-7 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                  <Icon className="size-3.5 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{item.title || item.name || item.label || "未命名"}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {item.createdAt
+                      ? new Date(item.createdAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                      : "-"}
+                    {item.version && ` · v${item.version}`}
+                    {item.status && ` · ${item.status}`}
+                  </p>
+                </div>
+                <Badge variant="outline" className="text-[9px] h-4 px-1 flex-shrink-0">
+                  {item.version ? `v${item.version}` : item.status || ""}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+    </div>
   );
 }
 
@@ -713,22 +1506,18 @@ function ToolbarButton({
   tooltip,
   onClick,
   disabled,
+  className,
 }: {
   icon: React.ReactNode;
   tooltip: string;
   onClick: () => void;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          onClick={onClick}
-          disabled={disabled}
-        >
+        <Button variant="ghost" size="icon" className={cn("size-8", className)} onClick={onClick} disabled={disabled}>
           {icon}
         </Button>
       </TooltipTrigger>
