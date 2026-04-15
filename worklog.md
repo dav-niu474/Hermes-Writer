@@ -394,3 +394,33 @@ Stage Summary:
 - Three-act structure parsing and visualization
 - Foreshadowing tracker with visual status indicators
 - AI-powered outline generation via planner agent
+---
+Task ID: 1-8
+Agent: main-coordinator
+Task: Hermes Canvas workspace restructure - complete pipeline from git unlock to deployment
+
+Work Log:
+- Resolved git deadlock by cleaning rebase-merge state and resetting to origin/main
+- Added GitHub remote with authentication token
+- Read and analyzed all existing project files (store, types, workspace-view, version-panel, etc.)
+- Created /src/components/workspace/ directory
+- Created 4 new workspace components via parallel subagents:
+  - outline-canvas.tsx (1563 lines) - Three-act structure visualization, spec CRUD, foreshadowing tracker, AI generation
+  - character-archive.tsx (908 lines) - Character card grid, role-based colors, detail/edit views, CRUD
+  - worldview-gallery.tsx (723 lines) - Categorized grid, 6 categories, setting cards, CRUD
+  - version-center.tsx (1936 lines) - Full-page version management with kanban, timeline, tree views
+- Rewrote workspace-view.tsx with double-layer navigation (creative layer + engineering layer)
+- Updated lib/store.ts with workspaceTab and engineeringCollapsed state
+- Fixed TypeScript 5.9.3 trailing comma parsing bug in ENGINEERING_TAB declaration
+- Ran ESLint: 0 errors, 0 warnings
+- Committed and pushed to GitHub (d08ef1b)
+- Vercel deployment attempted but token scope insufficient (auto-deploy via Git integration expected)
+
+Stage Summary:
+- 11 files changed, 5789 insertions(+), 512 deletions(-)
+- Hermes Canvas workspace restructure fully implemented
+- Double-layer navigation: Creative Layer (outline/characters/worldview) + Engineering Layer (version management, collapsible)
+- Chapter list always visible at bottom of sidebar
+- Full-page VersionCenter when version tab selected
+- Chapter editor as main content area for creative tabs
+- All lint checks pass
