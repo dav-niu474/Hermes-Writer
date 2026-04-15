@@ -683,7 +683,7 @@ export function WorkspaceView() {
 
             <div className="min-w-0 flex items-center gap-2">
               <h2 className="text-sm font-semibold truncate max-w-[200px]">{currentNovel?.title}</h2>
-              {selectedChapter && (
+              {currentChapter && (
                 <>
                   <span className="text-muted-foreground/50">·</span>
                   <span className="text-xs text-muted-foreground truncate">{currentChapter?.title}</span>

@@ -351,10 +351,7 @@ export async function POST(request: Request) {
       }
 
       // Auto-save to spec if applicable
-      let savedSpec = null;
-      if (novelId) {
-        savedSpec = await autoSaveToSpec(db, novelId, agentType as AgentType, output, specCategory);
-      }
+      const savedSpec = novelId ? await autoSaveToSpec(db, novelId, agentType as AgentType, output, specCategory) : null;
 
       return NextResponse.json({
         taskId: agentTask?.id,
