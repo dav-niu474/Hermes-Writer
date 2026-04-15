@@ -424,3 +424,31 @@ Stage Summary:
 - Full-page VersionCenter when version tab selected
 - Chapter editor as main content area for creative tabs
 - All lint checks pass
+---
+Task ID: 2-1
+Agent: main
+Task: 统一创作层与版本管理为4标签页融合布局
+
+Work Log:
+- Rewrote workspace-view.tsx to unify version management as a 4th tab alongside outline/characters/worldview
+- Merged CREATIVE_TABS and ENGINEERING_TAB into single WORKSPACE_TABS array with 4 entries (outline, characters, worldview, version)
+- Removed "创作层" label header, replaced with unified grid-cols-4 tab layout
+- Removed Engineering Layer collapsible section (ChevronDown, Layers, prevCreativeTab)
+- Removed showFullPageView and showChapterEditor variables, replaced with isVersionTab
+- Back arrow now only navigates to novels list (no more version-specific back logic)
+- Save button hidden when version tab is active
+- Version tab content in main area shows VersionCenter component instead of chapter editor
+- Added compact version summary placeholder in left sidebar ScrollArea when version tab is active
+- Left sidebar always visible with tabs + chapter list regardless of active tab
+- Removed unused imports: History, ChevronDown, Layers, Copy, OutlineCanvas, CharacterArchive, WorldviewGallery, Separator
+- Removed engineeringCollapsed/setEngineeringCollapsed from store destructuring
+- Removed prevCreativeTab state
+- ESLint: 0 errors
+- Committed and pushed to GitHub (036b5e1)
+
+Stage Summary:
+- 1 file changed, 31 insertions(+), 74 deletions(-)
+- Version management integrated as equal 4th tab in unified workspace navigation
+- Left sidebar always visible with 4-tab grid + context-aware content + chapter list
+- Main content area context-aware: creative tabs → chapter editor, version tab → VersionCenter
+- All existing functionality preserved (agent panel, chat mode, orchestration, dialogs, export, stats)

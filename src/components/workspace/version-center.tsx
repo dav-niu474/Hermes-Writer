@@ -66,7 +66,6 @@ import {
   Globe,
   Settings,
   History,
-  ArrowLeft,
   Loader2,
   Brain,
   Sparkles,
@@ -275,7 +274,7 @@ const KANBAN_BG_COLORS: Record<string, string> = {
 // ==================== Component ====================
 
 export function VersionCenter({ novelId }: VersionCenterProps) {
-  const { chapters, setChapters, workspaceTab, setWorkspaceTab, setEngineeringCollapsed } = useAppStore();
+  const { chapters, setChapters } = useAppStore();
 
   // Common state
   const [activeTab, setActiveTab] = useState("specs");
@@ -617,29 +616,11 @@ export function VersionCenter({ novelId }: VersionCenterProps) {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <GitCompare className="size-5 text-teal-600 dark:text-teal-400" />
-            <div>
-              <h2 className="text-base font-semibold">版本管理中心</h2>
-              <p className="text-xs text-muted-foreground">
-                规格文档 · 变更提案 · 版本快照 · 分支管理
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs gap-1.5"
-            onClick={() => {
-              setWorkspaceTab("outline");
-              setEngineeringCollapsed(true);
-            }}
-          >
-            <ArrowLeft className="size-3.5" />
-            返回创作
-          </Button>
+        {/* Compact Header */}
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b flex-shrink-0 bg-muted/20">
+          <GitCompare className="size-4 text-teal-600 dark:text-teal-400" />
+          <h2 className="text-sm font-semibold">版本管理</h2>
+          <span className="text-[10px] text-muted-foreground">规格文档 · 提案 · 快照 · 分支</span>
         </div>
 
         {/* Tab Navigation */}

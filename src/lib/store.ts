@@ -46,8 +46,6 @@ interface AppState {
   // Workspace Canvas navigation
   workspaceTab: WorkspaceTab;
   setWorkspaceTab: (tab: WorkspaceTab) => void;
-  engineeringCollapsed: boolean;
-  setEngineeringCollapsed: (v: boolean) => void;
 
   // Novel selection
   selectedNovelId: string | null;
@@ -94,8 +92,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Workspace Canvas navigation
   workspaceTab: "outline",
   setWorkspaceTab: (tab) => set({ workspaceTab: tab }),
-  engineeringCollapsed: false,
-  setEngineeringCollapsed: (v) => set({ engineeringCollapsed: v }),
 
   // Novel selection
   selectedNovelId: null,
