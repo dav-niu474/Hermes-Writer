@@ -46,7 +46,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Plus,
@@ -58,7 +57,6 @@ import {
   Download,
   FileText,
   ChevronRight,
-  ChevronDown,
   Map,
   Users,
   Globe,
@@ -72,20 +70,19 @@ import {
   Copy,
   Trash2,
   History,
-  Layers,
-  MoreHorizontal,
   BookMarked,
   Target,
   PenLine,
   Wand2,
-  Clock,
   MessageSquare,
+  Brain,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Stub imports
 import { AiAssistantDrawer } from "@/components/platform/ai-assistant-drawer";
 import { StoryWizard } from "@/components/platform/story-wizard";
+import { OrchestrationPanel } from "@/components/platform/orchestration-panel";
 
 // ===== Types =====
 interface NovelSpec {
@@ -314,6 +311,7 @@ export function WorkspaceView() {
   const [aiGenerating, setAiGenerating] = useState<SpecCategory | null>(null);
   const [aiMessage, setAiMessage] = useState("");
   const [showAiAssistant, setShowAiAssistant] = useState(false);
+  const [showOrchestration, setShowOrchestration] = useState(false);
 
   // Dialog state
   const [showCreateSpec, setShowCreateSpec] = useState(false);
@@ -400,6 +398,14 @@ export function WorkspaceView() {
       setChapterStatus(ch.status);
     }
   }, [selectedChapterId, chapters]);
+
+  // Reload specs when orchestration panel closes (it auto-saves content)
+  useEffect(() => {
+    if (!showOrchestration) {
+      loadSpecs();
+      loadNovelData();
+    }
+  }, [showOrchestration]);
 
   // ===== Navigation =====
   function handleSelectSpec(spec: NovelSpec) {
@@ -701,6 +707,7 @@ export function WorkspaceView() {
           <div className="flex items-center gap-0.5">
             <ToolbarButton icon={<Wand2 className="size-4" />} tooltip="AI 一键创作" onClick={() => setShowStoryWizard(true)} />
             <ToolbarButton icon={<MessageSquare className="size-4" />} tooltip="AI 助手" onClick={() => setShowAiAssistant(true)} />
+            <ToolbarButton icon={<Brain className="size-4" />} tooltip="协同编排" onClick={() => setShowOrchestration(true)} />
 
             <div className="w-px h-5 bg-border mx-1" />
 
@@ -1181,6 +1188,30 @@ export function WorkspaceView() {
           novelId={selectedNovelId!}
           onComplete={() => { setShowStoryWizard(false); loadNovelData(); loadSpecs(); }}
         />
+
+        {/* Orchestration Panel (Bottom Sheet) */}
+        <Sheet open={showOrchestration} onOpenChange={setShowOrchestration}>
+          <SheetContent side="bottom" className="h-[80vh] rounded-t-2xl p-0">
+            <SheetHeader className="sr-only">
+              <SheetTitle>Hermes 协同编排</SheetTitle>
+              <SheetDescription>多Agent协同创作引擎</SheetDescription>
+            </SheetHeader>
+            <OrchestrationPanel
+              novelTitle={currentNovel?.title}
+              novelGenre={currentNovel?.genre}
+              novelDescription={currentNovel?.description}
+              chapterContent={chapterContent}
+              characters={characters.map((c) => ({ name: c.name, role: c.role, description: c.description }))}
+              novelId={selectedNovelId || undefined}
+              chapterId={selectedChapterId || undefined}
+              onAdoptContent={(content) => {
+                if (selectedChapterId) {
+                  setChapterContent((prev) => prev + "\n\n" + content);
+                }
+              }}
+            />
+          </SheetContent>
+        </Sheet>
 
         {/* AI Generating Overlay */}
         {aiGenerating && (

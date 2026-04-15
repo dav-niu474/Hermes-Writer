@@ -420,10 +420,10 @@ function createPgModel(pool: SqlExecutor, tableName: string) {
           row[relKey] = relData;
 
           // Recursively resolve nested includes
-          if (typeof relOpts === "object" && relOpts !== null && !relOpts.orderBy && !relOpts.take && !relOpts._count) {
+          if (typeof relOpts === "object" && relOpts !== null && !(relOpts as any).orderBy && !(relOpts as any).take && !(relOpts as any)._count) {
             const nestedIncludes: Record<string, any> = {};
             for (const [k, v] of Object.entries(relOpts)) {
-              if (v && typeof v === "object" && !v.orderBy && !v.take) {
+              if (v && typeof v === "object" && !(v as any).orderBy && !(v as any).take) {
                 nestedIncludes[k] = v;
               }
             }
