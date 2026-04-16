@@ -62,20 +62,26 @@ import {
   Globe,
   Shield,
   Palette,
-  GitBranch,
-  GitCommit,
-  GitCompare,
   Eye,
   Pencil,
   Copy,
   Trash2,
-  History,
   BookMarked,
   Target,
   PenLine,
   Wand2,
   MessageSquare,
   Brain,
+  Search,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Maximize2,
+  Minimize2,
+  GripVertical,
+  Check,
+  PenTool,
+  Paintbrush,
+  Expand,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -286,6 +292,7 @@ export function WorkspaceView() {
   // ===== Core state =====
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   // Spec state
   const [specs, setSpecs] = useState<NovelSpec[]>([]);
@@ -312,6 +319,7 @@ export function WorkspaceView() {
   const [aiMessage, setAiMessage] = useState("");
   const [showAiAssistant, setShowAiAssistant] = useState(false);
   const [showOrchestration, setShowOrchestration] = useState(false);
+  const [aiPrefill, setAiPrefill] = useState<string>("");
 
   // Dialog state
   const [showCreateSpec, setShowCreateSpec] = useState(false);
@@ -323,8 +331,10 @@ export function WorkspaceView() {
   const [showStoryWizard, setShowStoryWizard] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  // Version panel state
-  const [showVersionPanel, setShowVersionPanel] = useState<"proposals" | "snapshots" | "branches" | "history" | null>(null);
+  // UI state
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -333,6 +343,18 @@ export function WorkspaceView() {
   const selectedSpec = specs.find((s) => s.id === selectedSpecId);
   const wordCount = selectedSpec ? specContent.length : chapterContent.length;
   const totalWords = chapters.reduce((sum, c) => sum + c.wordCount, 0) + chapterContent.length;
+  const completedChapters = chapters.filter((c) => c.status === "completed").length;
+  const progressPercent = chapters.length > 0 ? Math.round((completedChapters / chapters.length) * 100) : 0;
+  const sidebarHidden = sidebarCollapsed || focusMode;
+
+  // Writing stats for chapter editor
+  const paragraphCount = useMemo(() => {
+    return chapterContent.split(/\n\s*\n/).filter((p) => p.trim().length > 0).length;
+  }, [chapterContent]);
+  const readingTime = useMemo(() => {
+    const minutes = Math.ceil(chapterContent.length / 500);
+    return minutes < 1 ? "< 1" : String(minutes);
+  }, [chapterContent]);
 
   // Group specs by category
   const specsByCategory = useMemo(() => {
@@ -342,6 +364,27 @@ export function WorkspaceView() {
     }
     return grouped;
   }, [specs]);
+
+  // Filtered specs/chapters based on search
+  const filteredSpecsByCategory = useMemo(() => {
+    if (!searchQuery.trim()) return specsByCategory;
+    const q = searchQuery.toLowerCase().trim();
+    const filtered: Record<string, NovelSpec[]> = {};
+    for (const cat of SPEC_CATEGORIES) {
+      filtered[cat.value] = (specsByCategory[cat.value] || []).filter(
+        (s) => s.title.toLowerCase().includes(q) || s.content.toLowerCase().includes(q)
+      );
+    }
+    return filtered;
+  }, [specsByCategory, searchQuery]);
+
+  const filteredChapters = useMemo(() => {
+    if (!searchQuery.trim()) return chapters;
+    const q = searchQuery.toLowerCase().trim();
+    return chapters.filter(
+      (ch) => ch.title.toLowerCase().includes(q) || ch.content.toLowerCase().includes(q)
+    );
+  }, [chapters, searchQuery]);
 
   // ===== Data Loading =====
   const loadSpecs = useCallback(async () => {
@@ -407,6 +450,19 @@ export function WorkspaceView() {
     }
   }, [showOrchestration]);
 
+  // Ctrl+S keyboard shortcut
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        if (selectedSpecId) saveSpecContent();
+        else if (selectedChapterId) saveChapter();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedSpecId, selectedChapterId]);
+
   // ===== Navigation =====
   function handleSelectSpec(spec: NovelSpec) {
     setSelectedSpecId(spec.id);
@@ -424,6 +480,23 @@ export function WorkspaceView() {
     setSelectedSpecId(null);
     setSpecContent("");
     setSpecEditing(false);
+  }
+
+  // ===== Chapter AI Action =====
+  function handleChapterAIAction(chapter: Chapter, action: "continue" | "polish" | "expand") {
+    const chContent = chapter.id === selectedChapterId
+      ? chapterContent
+      : chapter.content;
+    const prompts: Record<string, string> = {
+      continue: `请根据当前章节内容，续写接下来的故事（约800-1500字）。保持与已有内容风格一致，自然衔接。\n\n当前章节内容：\n${chContent.slice(0, 2000)}`,
+      polish: `请对以下文本进行润色优化，提升文字表达力和画面感，保持原有风格和叙事视角。输出润色后的完整文本。\n\n当前章节内容：\n${chContent.slice(0, 3000)}`,
+      expand: `请对以下内容进行扩写，增加更多细节描写、对话和心理活动，使场景更加丰满（约扩写一倍）。输出扩写后的完整文本。\n\n当前章节内容：\n${chContent.slice(0, 2000)}`,
+    };
+    setAiPrefill(prompts[action]);
+    if (chapter.id !== selectedChapterId) {
+      setSelectedChapter(chapter.id);
+    }
+    setShowAiAssistant(true);
   }
 
   // ===== Spec CRUD =====
@@ -466,9 +539,7 @@ export function WorkspaceView() {
         body: JSON.stringify({ content: specContent }),
       });
       loadSpecs();
-      // Update local version
-      const updated = { ...selectedSpec, version: selectedSpec.version + 1, content: specContent };
-      // refresh from server
+      setLastSaved(new Date());
     } catch (e) {
       console.error("Failed to save spec:", e);
     } finally {
@@ -502,6 +573,7 @@ export function WorkspaceView() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: chapterTitle, content: chapterContent, summary: chapterSummary, status: chapterStatus }),
       });
+      setLastSaved(new Date());
     } catch (e) { console.error("Save failed:", e); }
     finally { setSaving(false); }
   }
@@ -575,7 +647,7 @@ export function WorkspaceView() {
           novelGenre: currentNovel?.genre,
           novelDescription: currentNovel?.description,
           characters: characters.map((c) => `${c.name}(${c.role}): ${c.description}`),
-          specCategory: category, // Tell API to auto-save to this spec category
+          specCategory: category,
           stream: false,
         }),
       });
@@ -592,7 +664,6 @@ export function WorkspaceView() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ content: generatedContent }),
             });
-            // If this spec is currently selected, update the editor
             if (selectedSpecId === existingSpecs[0].id) {
               setSpecContent(generatedContent);
             }
@@ -689,7 +760,7 @@ export function WorkspaceView() {
 
             <div className="min-w-0 flex items-center gap-2">
               <h2 className="text-sm font-semibold truncate max-w-[200px]">{currentNovel?.title}</h2>
-              {currentChapter && (
+              {currentChapter && !selectedSpec && (
                 <>
                   <span className="text-muted-foreground/50">·</span>
                   <span className="text-xs text-muted-foreground truncate">{currentChapter?.title}</span>
@@ -706,7 +777,7 @@ export function WorkspaceView() {
 
           <div className="flex items-center gap-0.5">
             <ToolbarButton icon={<Wand2 className="size-4" />} tooltip="AI 一键创作" onClick={() => setShowStoryWizard(true)} />
-            <ToolbarButton icon={<MessageSquare className="size-4" />} tooltip="AI 助手" onClick={() => setShowAiAssistant(true)} />
+            <ToolbarButton icon={<MessageSquare className="size-4" />} tooltip="AI 助手" onClick={() => { setAiPrefill(""); setShowAiAssistant(true); }} />
             <ToolbarButton icon={<Brain className="size-4" />} tooltip="协同编排" onClick={() => setShowOrchestration(true)} />
 
             <div className="w-px h-5 bg-border mx-1" />
@@ -724,7 +795,7 @@ export function WorkspaceView() {
 
             <ToolbarButton
               icon={saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              tooltip={saving ? "保存中..." : "保存"}
+              tooltip={saving ? "保存中..." : "保存 (Ctrl+S)"}
               onClick={() => { if (selectedSpecId) saveSpecContent(); else saveChapter(); }}
               disabled={saving}
             />
@@ -734,12 +805,43 @@ export function WorkspaceView() {
         {/* ===== Main Body: Sidebar + Content ===== */}
         <div className="flex flex-1 min-h-0">
           {/* ===== Left Sidebar ===== */}
-          <aside className="w-56 lg:w-64 border-r flex-shrink-0 flex flex-col bg-muted/20">
+          <aside className={cn(
+            "border-r flex-shrink-0 flex flex-col bg-muted/20 transition-all duration-200",
+            sidebarHidden ? "w-0 overflow-hidden border-r-0" : "w-56 lg:w-64"
+          )}>
+            {/* Search Bar */}
+            <div className="p-2 pb-1 flex-shrink-0">
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground/50" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="搜索文档和章节..."
+                  className="h-7 pl-7 pr-2 text-xs bg-background border-muted-foreground/10 focus-visible:ring-1 focus-visible:ring-primary/30"
+                />
+                {searchQuery && (
+                  <button
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 size-4 rounded-full flex items-center justify-center hover:bg-muted"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    <span className="text-[10px] text-muted-foreground">&times;</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Spec Categories */}
             <ScrollArea className="flex-1">
-              <div className="p-2">
+              <div className="p-2 pt-1">
+                {/* Section Header: 创作设定 */}
+                <div className="flex items-center gap-1.5 px-2 py-2 mb-1">
+                  <div className="size-1 rounded-full bg-primary/60" />
+                  <span className="text-[11px] font-semibold text-foreground/70 uppercase tracking-wider">创作设定</span>
+                  <div className="flex-1 h-px bg-border/50" />
+                </div>
+
                 {SPEC_CATEGORIES.map((cat) => {
-                  const catSpecs = specsByCategory[cat.value] || [];
+                  const catSpecs = filteredSpecsByCategory[cat.value] || [];
                   const isExpanded = expandedCategories[cat.value] !== false;
                   const CatIcon = cat.icon;
                   const isGenerating = aiGenerating === cat.value;
@@ -803,7 +905,9 @@ export function WorkspaceView() {
                               <div className="h-6 bg-muted/50 rounded w-3/4 animate-pulse" />
                             </div>
                           ) : catSpecs.length === 0 ? (
-                            <p className="text-[10px] text-muted-foreground/60 px-2 py-1">暂无文档</p>
+                            <p className="text-[10px] text-muted-foreground/60 px-2 py-1">
+                              {searchQuery ? "无匹配" : "暂无文档"}
+                            </p>
                           ) : (
                             catSpecs.map((spec) => (
                               <div
@@ -836,62 +940,100 @@ export function WorkspaceView() {
                 {/* Separator */}
                 <Separator className="my-3" />
 
-                {/* Chapters */}
-                <div className="mb-1">
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium text-muted-foreground mb-1">
-                    <BookMarked className="size-3.5 text-foreground/70" />
-                    <span className="flex-1">章节</span>
-                    <Badge variant="secondary" className="text-[9px] h-4 px-1 min-w-[16px] justify-center">
-                      {chapters.length}
-                    </Badge>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          className="size-5 rounded flex items-center justify-center flex-shrink-0 transition-colors hover:bg-background"
-                          onClick={() => { setNewChapterTitle(""); setShowCreateChapter(true); }}
-                        >
-                          <Plus className="size-3 text-muted-foreground" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="right">新建章节</TooltipContent>
-                    </Tooltip>
-                  </div>
+                {/* Section Header: 章节列表 */}
+                <div className="flex items-center gap-1.5 px-2 py-2 mb-1">
+                  <div className="size-1 rounded-full bg-primary/60" />
+                  <span className="text-[11px] font-semibold text-foreground/70 uppercase tracking-wider">章节列表</span>
+                  <div className="flex-1 h-px bg-border/50" />
+                  <Badge variant="secondary" className="text-[9px] h-4 px-1 min-w-[16px] justify-center">
+                    {filteredChapters.length}
+                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className="size-5 rounded flex items-center justify-center flex-shrink-0 transition-colors hover:bg-background"
+                        onClick={() => { setNewChapterTitle(""); setShowCreateChapter(true); }}
+                      >
+                        <Plus className="size-3 text-muted-foreground" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">新建章节</TooltipContent>
+                  </Tooltip>
+                </div>
 
-                  <div className="space-y-0.5">
-                    {chapters.length === 0 ? (
-                      <p className="text-[10px] text-muted-foreground/60 px-2 py-1">暂无章节</p>
-                    ) : (
-                      chapters.map((ch) => (
-                        <div
-                          key={ch.id}
-                          className={cn(
-                            "group flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs cursor-pointer transition-all",
-                            selectedChapterId === ch.id
-                              ? "bg-primary/10 text-primary font-medium"
-                              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                          )}
-                          onClick={() => handleSelectChapter(ch.id)}
+                {/* Chapters */}
+                <div className="space-y-0.5">
+                  {filteredChapters.length === 0 ? (
+                    <p className="text-[10px] text-muted-foreground/60 px-2 py-1">
+                      {searchQuery ? "无匹配章节" : "暂无章节"}
+                    </p>
+                  ) : (
+                    filteredChapters.map((ch) => (
+                      <div
+                        key={ch.id}
+                        className={cn(
+                          "group flex items-center gap-1 px-2 py-1.5 rounded-md text-xs cursor-pointer transition-all",
+                          selectedChapterId === ch.id
+                            ? "bg-primary/10 text-primary font-medium"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                        )}
+                        onClick={() => handleSelectChapter(ch.id)}
+                      >
+                        {/* Drag handle hint */}
+                        <GripVertical className="size-2.5 text-muted-foreground/20 flex-shrink-0 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <div className={cn(
+                          "size-1.5 rounded-full flex-shrink-0",
+                          selectedChapterId === ch.id ? "bg-primary" : "bg-muted-foreground/30"
+                        )} />
+                        <span className="text-[10px] text-muted-foreground/60 w-4 flex-shrink-0">{ch.chapterNumber}</span>
+                        <span className="flex-1 truncate">{ch.title}</span>
+                        {/* Word count */}
+                        {ch.wordCount > 0 && (
+                          <span className="text-[9px] text-muted-foreground/50 flex-shrink-0 tabular-nums">
+                            {ch.wordCount > 1000 ? `${(ch.wordCount / 1000).toFixed(1)}k` : ch.wordCount}
+                          </span>
+                        )}
+                        {/* AI 续写 button (hover visible) */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              className="opacity-0 group-hover:opacity-100 size-4 rounded flex items-center justify-center flex-shrink-0 transition-opacity hover:bg-primary/10"
+                              onClick={(e) => { e.stopPropagation(); handleChapterAIAction(ch, "continue"); }}
+                            >
+                              <PenTool className="size-2.5 text-primary/60" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">AI 续写</TooltipContent>
+                        </Tooltip>
+                        {/* Delete button (hover visible) */}
+                        <button
+                          className="opacity-0 group-hover:opacity-100 size-4 rounded flex items-center justify-center flex-shrink-0 transition-opacity hover:bg-destructive/10"
+                          onClick={(e) => { e.stopPropagation(); deleteChapter(ch.id); }}
                         >
-                          <div className={cn(
-                            "size-1.5 rounded-full flex-shrink-0",
-                            selectedChapterId === ch.id ? "bg-primary" : "bg-muted-foreground/30"
-                          )} />
-                          <span className="text-[10px] text-muted-foreground/60 w-4 flex-shrink-0">{ch.chapterNumber}</span>
-                          <span className="flex-1 truncate">{ch.title}</span>
-                          <button
-                            className="opacity-0 group-hover:opacity-100 size-4 rounded flex items-center justify-center flex-shrink-0 transition-opacity hover:bg-destructive/10"
-                            onClick={(e) => { e.stopPropagation(); deleteChapter(ch.id); }}
-                          >
-                            <Trash2 className="size-2.5 text-destructive/60" />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                          <Trash2 className="size-2.5 text-destructive/60" />
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             </ScrollArea>
           </aside>
+
+          {/* ===== Sidebar Toggle Button ===== */}
+          {!focusMode && (
+            <button
+              className="absolute left-0 top-[calc(3.5rem+5.5rem)] z-10 flex items-center justify-center size-6 rounded-r-md border border-l-0 bg-background shadow-sm transition-all duration-200 hover:bg-muted"
+              style={{ left: sidebarHidden ? 0 : undefined }}
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            >
+              {sidebarHidden ? (
+                <PanelLeftOpen className="size-3.5 text-muted-foreground" />
+              ) : (
+                <PanelLeftClose className="size-3.5 text-muted-foreground" />
+              )}
+            </button>
+          )}
 
           {/* ===== Main Content Area ===== */}
           <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -913,7 +1055,7 @@ export function WorkspaceView() {
               /* ===== Chapter Editor ===== */
               <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 {/* Chapter toolbar */}
-                <div className="flex items-center justify-between px-6 py-2 border-b flex-shrink-0">
+                <div className="flex items-center justify-between px-4 md:px-6 py-2 border-b flex-shrink-0">
                   <div className="flex items-center gap-2">
                     <span className={cn(
                       "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium",
@@ -928,7 +1070,67 @@ export function WorkspaceView() {
                       第 {currentChapter.chapterNumber} 章
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
+
+                  {/* AI Action Buttons */}
+                  <div className="flex items-center gap-1">
+                    {/* AI续写 - most prominent */}
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs gap-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-sm"
+                      onClick={() => handleChapterAIAction(currentChapter, "continue")}
+                    >
+                      <PenTool className="size-3" />
+                      <span className="hidden sm:inline">AI 续写</span>
+                    </Button>
+                    {/* AI润色 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => handleChapterAIAction(currentChapter, "polish")}
+                        >
+                          <Paintbrush className="size-3" />
+                          <span className="hidden md:inline">润色</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>AI 润色文本</TooltipContent>
+                    </Tooltip>
+                    {/* AI扩写 */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => handleChapterAIAction(currentChapter, "expand")}
+                        >
+                          <Expand className="size-3" />
+                          <span className="hidden md:inline">扩写</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>AI 扩写内容</TooltipContent>
+                    </Tooltip>
+
+                    <div className="w-px h-5 bg-border mx-1" />
+
+                    {/* Focus mode toggle */}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant={focusMode ? "secondary" : "ghost"}
+                          size="icon"
+                          className="size-7"
+                          onClick={() => setFocusMode(!focusMode)}
+                        >
+                          {focusMode ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>{focusMode ? "退出专注模式" : "专注模式"}</TooltipContent>
+                    </Tooltip>
+
+                    {/* Status select */}
                     <Select value={chapterStatus} onValueChange={(v) => { setChapterStatus(v); saveChapter(); }}>
                       <SelectTrigger className="h-7 w-24 text-xs border-none shadow-none bg-transparent">
                         <SelectValue />
@@ -953,28 +1155,105 @@ export function WorkspaceView() {
                       className="text-2xl md:text-3xl font-bold border-none shadow-none px-0 h-auto focus-visible:ring-0 bg-transparent placeholder:text-muted-foreground/40 mb-8"
                       placeholder="章节标题"
                     />
-                    <Textarea
-                      value={chapterContent}
-                      onChange={(e) => handleContentChange(e.target.value)}
-                      className="min-h-[60vh] w-full resize-none border-none shadow-none bg-transparent text-base leading-[1.8] font-serif focus-visible:ring-0 placeholder:text-muted-foreground/40 selection:bg-primary/20"
-                      placeholder="开始写作..."
-                      rows={40}
-                    />
+                    <div className="relative">
+                      {chapterContent.length === 0 && (
+                        <div className="absolute top-3 left-0 pointer-events-none flex items-center gap-2 text-muted-foreground/30 select-none">
+                          <PenLine className="size-4" />
+                          <span className="text-base font-serif">在这里开始你的故事...</span>
+                        </div>
+                      )}
+                      <Textarea
+                        value={chapterContent}
+                        onChange={(e) => handleContentChange(e.target.value)}
+                        className="min-h-[60vh] w-full resize-none border-none shadow-none bg-transparent text-base leading-[1.8] font-serif focus-visible:ring-0 placeholder:text-transparent selection:bg-primary/20"
+                        placeholder=""
+                        rows={40}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Writing Statistics Bar */}
+                <div className="flex items-center justify-between px-4 md:px-6 py-1.5 border-t flex-shrink-0 text-[11px] text-muted-foreground bg-muted/20">
+                  <div className="flex items-center gap-4">
+                    <span className="flex items-center gap-1">
+                      <FileText className="size-3" />
+                      {chapterContent.length.toLocaleString()} 字
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="tabular-nums">{paragraphCount}</span> 段
+                    </span>
+                    <span className="hidden sm:flex items-center gap-1">
+                      约 {readingTime} 分钟阅读
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Save indicator */}
+                    {saving ? (
+                      <span className="flex items-center gap-1 text-amber-500">
+                        <Loader2 className="size-3 animate-spin" />
+                        保存中...
+                      </span>
+                    ) : lastSaved ? (
+                      <span className="flex items-center gap-1 text-emerald-500">
+                        <Check className="size-3" />
+                        已保存
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
             ) : (
-              /* ===== Empty State ===== */
-              <div className="flex-1 flex flex-col items-center justify-center gap-6">
-                <div className="size-20 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/20 dark:to-orange-900/20 flex items-center justify-center">
-                  <PenLine className="size-9 text-amber-500" />
-                </div>
+              /* ===== Empty State (Inspiring Welcome) ===== */
+              <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8">
+                {/* Novel cover / stats */}
+                {currentNovel && (
+                  <div className="flex flex-col items-center gap-4 max-w-md w-full">
+                    {currentNovel.coverImage ? (
+                      <div className="size-24 rounded-xl overflow-hidden shadow-lg">
+                        <img src={currentNovel.coverImage} alt={currentNovel.title} className="size-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="size-20 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/20 dark:to-orange-900/20 flex items-center justify-center">
+                        <BookOpen className="size-9 text-amber-500" />
+                      </div>
+                    )}
+                    <div className="text-center">
+                      <h3 className="text-lg font-semibold">{currentNovel.title}</h3>
+                      {currentNovel.genre && (
+                        <Badge variant="secondary" className="mt-1">{currentNovel.genre}</Badge>
+                      )}
+                      {currentNovel.description && (
+                        <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{currentNovel.description}</p>
+                      )}
+                    </div>
+                    {/* Stats grid */}
+                    <div className="grid grid-cols-3 gap-4 w-full max-w-xs">
+                      <div className="text-center p-3 rounded-lg bg-muted/40">
+                        <p className="text-lg font-semibold tabular-nums">{totalWords.toLocaleString()}</p>
+                        <p className="text-[10px] text-muted-foreground">总字数</p>
+                      </div>
+                      <div className="text-center p-3 rounded-lg bg-muted/40">
+                        <p className="text-lg font-semibold tabular-nums">{chapters.length}</p>
+                        <p className="text-[10px] text-muted-foreground">章节</p>
+                      </div>
+                      <div className="text-center p-3 rounded-lg bg-muted/40">
+                        <p className="text-lg font-semibold tabular-nums">{specs.length}</p>
+                        <p className="text-[10px] text-muted-foreground">设定文档</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
                 <div className="text-center max-w-md">
-                  <h3 className="text-lg font-semibold mb-2">开始你的创作</h3>
-                  <p className="text-sm text-muted-foreground mb-6">
-                    创建规格文档规划故事，选择章节开始写作，或使用 AI 一键生成
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {chapters.length === 0 && specs.length === 0
+                      ? "从左侧创建设定文档或章节开始你的创作，或让 AI 帮你一键生成"
+                      : "从左侧选择章节或设定文档开始创作"
+                    }
                   </p>
-                  <div className="flex gap-3 justify-center">
+                  <div className="flex gap-3 justify-center flex-wrap">
                     <Button size="lg" onClick={() => setShowStoryWizard(true)}>
                       <Sparkles className="size-4 mr-2" />一键创作
                     </Button>
@@ -992,92 +1271,45 @@ export function WorkspaceView() {
         </div>
 
         {/* ===== Bottom Status Bar ===== */}
-        <footer className="flex items-center h-9 px-3 gap-2 flex-shrink-0 border-t bg-muted/30">
-          {/* Version tools */}
-          <div className="flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn("h-6 px-2 text-[11px] gap-1", showVersionPanel === "proposals" && "bg-muted")}
-                  onClick={() => setShowVersionPanel(showVersionPanel === "proposals" ? null : "proposals")}
-                >
-                  <GitCompare className="size-3" />
-                  <span className="hidden sm:inline">提案</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>变更提案</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn("h-6 px-2 text-[11px] gap-1", showVersionPanel === "snapshots" && "bg-muted")}
-                  onClick={() => setShowVersionPanel(showVersionPanel === "snapshots" ? null : "snapshots")}
-                >
-                  <GitCommit className="size-3" />
-                  <span className="hidden sm:inline">快照</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>版本快照</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn("h-6 px-2 text-[11px] gap-1", showVersionPanel === "branches" && "bg-muted")}
-                  onClick={() => setShowVersionPanel(showVersionPanel === "branches" ? null : "branches")}
-                >
-                  <GitBranch className="size-3" />
-                  <span className="hidden sm:inline">分支</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>分支管理</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={cn("h-6 px-2 text-[11px] gap-1", showVersionPanel === "history" && "bg-muted")}
-                  onClick={() => setShowVersionPanel(showVersionPanel === "history" ? null : "history")}
-                >
-                  <History className="size-3" />
-                  <span className="hidden sm:inline">历史</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>规格变更历史</TooltipContent>
-            </Tooltip>
-          </div>
+        <footer className="flex items-center h-9 px-3 gap-3 flex-shrink-0 border-t bg-muted/30">
+          {/* Progress bar */}
+          {chapters.length > 0 && (
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[10px] text-muted-foreground flex-shrink-0 hidden sm:inline">创作进度</span>
+              <div className="w-20 sm:w-32 h-1.5 bg-muted rounded-full overflow-hidden flex-shrink-0">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full transition-all duration-500"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="text-[10px] text-muted-foreground tabular-nums flex-shrink-0">
+                {completedChapters}/{chapters.length}
+              </span>
+            </div>
+          )}
 
           <div className="flex-1" />
 
-          {/* Word count + status */}
+          {/* Stats */}
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-            {selectedSpecId && <span>{wordCount.toLocaleString()} 字</span>}
-            {selectedChapterId && currentChapter && <span>{chapterContent.length.toLocaleString()} 字</span>}
-            {totalWords > 0 && <span>共 {totalWords.toLocaleString()} 字</span>}
+            {totalWords > 0 && (
+              <span className="hidden sm:inline">{totalWords.toLocaleString()} 字</span>
+            )}
+            <span className="hidden sm:inline">{chapters.length} 章</span>
+            <span className="hidden sm:inline">{specs.length} 设定</span>
+            {/* Save indicator */}
             <span className="flex items-center gap-1">
               {saving ? (
                 <><Loader2 className="size-3 animate-spin" /><span>保存中</span></>
               ) : (
-                <span className="flex items-center gap-1"><div className="size-1.5 rounded-full bg-emerald-500" /><span>已保存</span></span>
+                <span className="flex items-center gap-1">
+                  <div className="size-1.5 rounded-full bg-emerald-500" />
+                  <span>已保存</span>
+                </span>
               )}
             </span>
           </div>
         </footer>
-
-        {/* ===== Version Panel (slide-up from bottom bar) ===== */}
-        {showVersionPanel && (
-          <VersionPanel
-            novelId={selectedNovelId!}
-            type={showVersionPanel}
-            onClose={() => setShowVersionPanel(null)}
-          />
-        )}
 
         {/* ===== Dialogs ===== */}
 
@@ -1171,13 +1403,18 @@ export function WorkspaceView() {
         </Dialog>
 
         {/* AI Assistant Drawer */}
-        <Sheet open={showAiAssistant} onOpenChange={setShowAiAssistant}>
+        <Sheet open={showAiAssistant} onOpenChange={(open) => { setShowAiAssistant(open); if (!open) setAiPrefill(""); }}>
           <SheetContent side="bottom" className="h-[70vh] rounded-t-2xl">
             <SheetHeader>
               <SheetTitle>AI 助手</SheetTitle>
               <SheetDescription>智能写作辅助</SheetDescription>
             </SheetHeader>
-            <AiAssistantDrawer novelId={selectedNovelId!} chapterId={selectedChapterId} chapterContent={chapterContent} />
+            <AiAssistantDrawer
+              novelId={selectedNovelId!}
+              chapterId={selectedChapterId}
+              chapterContent={chapterContent}
+              prefill={aiPrefill}
+            />
           </SheetContent>
         </Sheet>
 
@@ -1281,17 +1518,39 @@ function SpecEditor({
           <div className="min-w-0 flex items-center gap-2">
             <span className="text-sm font-medium truncate">{spec.title}</span>
             <Badge variant="outline" className="text-[10px] h-5 px-1.5 flex-shrink-0">v{spec.version}</Badge>
-            {spec.status === "active" && (
-              <Badge className="text-[9px] h-4 px-1.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">活跃</Badge>
-            )}
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <ToolbarButton
-            icon={specEditing ? <Eye className="size-3.5" /> : <Pencil className="size-3.5" />}
-            tooltip={specEditing ? "预览" : "编辑"}
-            onClick={() => setSpecEditing(!specEditing)}
-          />
+          {/* Segmented edit/preview toggle */}
+          <div className="flex items-center rounded-lg border bg-muted/50 p-0.5">
+            <button
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all",
+                specEditing
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setSpecEditing(true)}
+            >
+              <Pencil className="size-3" />
+              编辑
+            </button>
+            <button
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all",
+                !specEditing
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              onClick={() => setSpecEditing(false)}
+            >
+              <Eye className="size-3" />
+              预览
+            </button>
+          </div>
+
+          <div className="w-px h-5 bg-border mx-1" />
+
           <ToolbarButton icon={<Copy className="size-3.5" />} tooltip="复制" onClick={onCopy} />
           <Button
             size="sm"
@@ -1301,7 +1560,7 @@ function SpecEditor({
             disabled={saving || !specEditing}
           >
             {saving ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
-            {saving ? "保存中" : specEditing ? "保存" : "保存"}
+            <span className="hidden sm:inline">{saving ? "保存中" : "保存"}</span>
           </Button>
           <ToolbarButton icon={<Trash2 className="size-3.5" />} tooltip="删除" onClick={onDelete} className="text-destructive/60 hover:text-destructive" />
         </div>
@@ -1341,7 +1600,19 @@ function SpecEditor({
           <span>{specContent.length.toLocaleString()} 字</span>
           <span>更新于 {spec.updatedAt ? new Date(spec.updatedAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}</span>
         </div>
-        <span>{specEditing ? "编辑中" : "预览模式"}</span>
+        <span className="flex items-center gap-1">
+          {saving ? (
+            <span className="flex items-center gap-1 text-amber-500"><Loader2 className="size-3 animate-spin" />保存中...</span>
+          ) : (
+            <span className="flex items-center gap-1">
+              {specEditing ? (
+                <span className="text-amber-500">编辑中</span>
+              ) : (
+                <><Check className="size-3 text-emerald-500" /><span>已保存</span></>
+              )}
+            </span>
+          )}
+        </span>
       </div>
     </div>
   );
@@ -1468,11 +1739,11 @@ function VersionPanel({
     history: "规格历史",
   };
 
-  const icons: Record<string, typeof GitCompare> = {
-    proposals: GitCompare,
-    snapshots: GitCommit,
-    branches: GitBranch,
-    history: History,
+  const icons: Record<string, typeof BookMarked> = {
+    proposals: BookMarked,
+    snapshots: BookMarked,
+    branches: BookMarked,
+    history: BookMarked,
   };
 
   const Icon = icons[type];

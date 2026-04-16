@@ -56,10 +56,12 @@ export function AiAssistantDrawer({
   novelId,
   chapterId,
   chapterContent,
+  prefill,
 }: {
   novelId: string;
   chapterId: string | null;
   chapterContent?: string;
+  prefill?: string;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -68,6 +70,15 @@ export function AiAssistantDrawer({
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Pre-fill input when prefill prop changes
+  useEffect(() => {
+    if (prefill && prefill.trim()) {
+      setInput(prefill);
+      // Auto-focus the input
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, [prefill]);
 
   // Auto-scroll to bottom
   useEffect(() => {
