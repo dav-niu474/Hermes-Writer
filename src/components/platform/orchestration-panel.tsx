@@ -580,11 +580,21 @@ export function OrchestrationPanel({
             </Button>
           )}
           <Select value={model} onValueChange={(v) => { setModel(v); onModelChange?.(v); }}>
-            <SelectTrigger className="h-6 w-[110px] text-[10px]"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-6 w-[140px] text-[10px]"><SelectValue /></SelectTrigger>
             <SelectContent>
               {AVAILABLE_MODELS.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  <span>{m.name}</span>
+                <SelectItem key={m.id} value={m.id} className="text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span>{m.name}</span>
+                    <span className={cn(
+                      "text-[8px] px-1 py-0.5 rounded-full",
+                      m.speed === "fast" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
+                      m.speed === "balanced" && "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
+                      m.speed === "powerful" && "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400",
+                    )}>
+                      {m.speed === "fast" ? "极速" : m.speed === "balanced" ? "均衡" : "强力"}
+                    </span>
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>

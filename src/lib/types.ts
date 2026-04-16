@@ -1070,16 +1070,24 @@ export const CHAPTER_STATUS_MAP: Record<ChapterStatus, { label: string; color: s
   completed: { label: "已完成", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" }
 };
 
-// Available AI Models
+// Available AI Models (re-exported from ai.ts for convenience)
 export interface LLMModel {
   id: string;
   name: string;
   provider: string;
   description: string;
+  maxTokens: number;
+  supportsThinking: boolean;
+  speed: "fast" | "balanced" | "powerful";
 }
 
 export const AVAILABLE_MODELS: LLMModel[] = [
-  { id: "glm-4-7", name: "GLM 4.7", provider: "NVIDIA NIM", description: "智谱 GLM-4.7 大语言模型" },
-  { id: "glm-5", name: "GLM 5", provider: "NVIDIA NIM", description: "智谱 GLM-5 旗舰模型" },
-  { id: "kimi-2.5", name: "Kimi 2.5", provider: "NVIDIA NIM", description: "Moonshot Kimi 2.5 模型" },
+  { id: "glm-4-7", name: "GLM 4.7", provider: "NVIDIA NIM", description: "智谱 GLM-4.7，适合网文创作和内容生成", maxTokens: 8192, supportsThinking: false, speed: "fast" },
+  { id: "deepseek-v3.2", name: "DeepSeek V3.2", provider: "NVIDIA NIM", description: "DeepSeek V3.2 MoE，高速推理，创作能力强", maxTokens: 8192, supportsThinking: false, speed: "fast" },
+  { id: "gemma-3-27b", name: "Gemma 3 27B", provider: "NVIDIA NIM", description: "Google Gemma 3 27B，轻量高效", maxTokens: 8192, supportsThinking: false, speed: "fast" },
+  { id: "kimi-k2", name: "Kimi K2", provider: "NVIDIA NIM", description: "Moonshot Kimi K2（无思考链），响应更快", maxTokens: 8192, supportsThinking: false, speed: "fast" },
+  { id: "llama-3.3-70b", name: "Llama 3.3 70B", provider: "NVIDIA NIM", description: "Meta Llama 3.3 70B，质量与速度均衡", maxTokens: 8192, supportsThinking: false, speed: "balanced" },
+  { id: "minimax-m2.5", name: "MiniMax M2.5", provider: "NVIDIA NIM", description: "MiniMax M2.5，擅长中文创作", maxTokens: 8192, supportsThinking: false, speed: "balanced" },
+  { id: "glm-5", name: "GLM 5", provider: "NVIDIA NIM", description: "智谱 GLM-5 旗舰模型，更强理解和创作", maxTokens: 16384, supportsThinking: true, speed: "powerful" },
+  { id: "kimi-2.5", name: "Kimi 2.5", provider: "NVIDIA NIM", description: "Moonshot Kimi 2.5，长文本和深度推理", maxTokens: 16384, supportsThinking: true, speed: "powerful" },
 ];

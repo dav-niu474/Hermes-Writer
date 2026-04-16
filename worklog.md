@@ -548,3 +548,25 @@ Stage Summary:
   11. Ctrl+S 快捷键保存
   12. 更丰富的空状态 - 显示作品封面/统计
   13. ai-assistant-drawer.tsx 新增 prefill prop 支持
+
+---
+Task ID: 13
+Agent: Main Developer
+Task: 添加更快的 AI 模型选项
+
+Work Log:
+- 查询 NVIDIA NIM API 获取可用模型列表（131个模型）
+- 选取适合中文创作的快速模型：DeepSeek V3.2, Gemma 3 27B, Kimi K2, Llama 3.3 70B, MiniMax M2.5
+- 更新 src/lib/ai.ts：扩展 AVAILABLE_MODELS（3→8个模型），添加 speed 字段（fast/balanced/powerful），更新 getNVIDIAModelId 映射
+- 更新 src/lib/types.ts：同步 LLMModel 接口和 AVAILABLE_MODELS 列表
+- 更新 src/components/platform/agents-view.tsx：动态模型名称查找替代硬编码
+- 更新 src/components/platform/agent-config-dialog.tsx：模型选择器添加速度标签（极速/均衡/强力）
+- 更新 src/components/platform/orchestration-panel.tsx：模型选择器添加速度标签
+- ESLint: 0 errors
+
+Stage Summary:
+- 模型数量从 3 个扩展到 8 个
+- ⚡ 极速模型：GLM 4.7, DeepSeek V3.2, Gemma 3 27B, Kimi K2
+- ⚖️ 均衡模型：Llama 3.3 70B, MiniMax M2.5
+- 🚀 强力模型：GLM 5, Kimi 2.5
+- UI 中每个模型选项都有彩色速度标签

@@ -279,7 +279,14 @@ export function AgentConfigDialog({ agentType, open, onOpenChange }: AgentConfig
                         <SelectItem key={m.id} value={m.id}>
                           <div className="flex items-center gap-2">
                             <span>{m.name}</span>
-                            <span className="text-[10px] text-muted-foreground">{m.provider}</span>
+                            <span className={cn(
+                              "text-[9px] px-1.5 py-0.5 rounded-full font-medium",
+                              m.speed === "fast" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400",
+                              m.speed === "balanced" && "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
+                              m.speed === "powerful" && "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-400",
+                            )}>
+                              {m.speed === "fast" ? "⚡极速" : m.speed === "balanced" ? "⚖️均衡" : "🚀强力"}
+                            </span>
                           </div>
                         </SelectItem>
                       ))}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AGENT_DEFINITIONS } from "@/lib/types";
+import { AGENT_DEFINITIONS, AVAILABLE_MODELS } from "@/lib/types";
 import type { AgentType, AgentTaskStatus } from "@/lib/types";
 import { useAppStore } from "@/lib/store";
 import { AgentConfigDialog } from "@/components/platform/agent-config-dialog";
@@ -214,7 +214,8 @@ export function AgentsView() {
             {AGENT_DEFINITIONS.map((agent) => {
               const config = agentConfigs[agent.type];
               const activeSkillsCount = config?.skills.filter((s) => s.enabled).length ?? 0;
-              const modelName = config?.preferredModel === "glm-5" ? "GLM 5" : config?.preferredModel === "kimi-2.5" ? "Kimi 2.5" : "GLM 4.7";
+              const modelInfo = AVAILABLE_MODELS.find((m) => m.id === config?.preferredModel);
+              const modelName = modelInfo?.name ?? "GLM 4.7";
 
               return (
                 <Card key={agent.type} className={cn("border cursor-pointer transition-all hover:shadow-md", AGENT_BG_COLORS[agent.type])} onClick={() => openConfig(agent.type)}>

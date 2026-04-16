@@ -1,5 +1,5 @@
 // NVIDIA NIM LLM Client
-// Supports GLM 4.7, GLM 5, Kimi 2.5
+// Supports GLM 4.7, GLM 5, Kimi 2.5, DeepSeek V3.2, Llama 3.3 70B, Gemma 3 27B, MiniMax M2.5
 
 export interface LLMModel {
   id: string;
@@ -8,32 +8,84 @@ export interface LLMModel {
   description: string;
   maxTokens: number;
   supportsThinking: boolean;
+  speed: "fast" | "balanced" | "powerful";
 }
 
 export const AVAILABLE_MODELS: LLMModel[] = [
+  // ⚡ Fast models — lower latency, suitable for quick drafts and interactive tasks
   {
     id: "glm-4-7",
     name: "GLM 4.7",
     provider: "NVIDIA NIM",
-    description: "智谱 GLM-4.7 大语言模型，适合网文创作和内容生成",
+    description: "智谱 GLM-4.7，适合网文创作和内容生成",
     maxTokens: 8192,
     supportsThinking: false,
+    speed: "fast",
   },
+  {
+    id: "deepseek-v3.2",
+    name: "DeepSeek V3.2",
+    provider: "NVIDIA NIM",
+    description: "DeepSeek V3.2 MoE，高速推理，创作能力强",
+    maxTokens: 8192,
+    supportsThinking: false,
+    speed: "fast",
+  },
+  {
+    id: "gemma-3-27b",
+    name: "Gemma 3 27B",
+    provider: "NVIDIA NIM",
+    description: "Google Gemma 3 27B，轻量高效",
+    maxTokens: 8192,
+    supportsThinking: false,
+    speed: "fast",
+  },
+  {
+    id: "kimi-k2",
+    name: "Kimi K2",
+    provider: "NVIDIA NIM",
+    description: "Moonshot Kimi K2（无思考链），响应更快",
+    maxTokens: 8192,
+    supportsThinking: false,
+    speed: "fast",
+  },
+  // ⚖️ Balanced models — good quality-to-speed ratio
+  {
+    id: "llama-3.3-70b",
+    name: "Llama 3.3 70B",
+    provider: "NVIDIA NIM",
+    description: "Meta Llama 3.3 70B，质量与速度均衡",
+    maxTokens: 8192,
+    supportsThinking: false,
+    speed: "balanced",
+  },
+  {
+    id: "minimax-m2.5",
+    name: "MiniMax M2.5",
+    provider: "NVIDIA NIM",
+    description: "MiniMax M2.5，擅长中文创作",
+    maxTokens: 8192,
+    supportsThinking: false,
+    speed: "balanced",
+  },
+  // 🚀 Powerful models — best quality, higher latency
   {
     id: "glm-5",
     name: "GLM 5",
     provider: "NVIDIA NIM",
-    description: "智谱 GLM-5 旗舰模型，更强的理解和创作能力",
+    description: "智谱 GLM-5 旗舰模型，更强理解和创作",
     maxTokens: 16384,
     supportsThinking: true,
+    speed: "powerful",
   },
   {
     id: "kimi-2.5",
     name: "Kimi 2.5",
     provider: "NVIDIA NIM",
-    description: "Moonshot Kimi 2.5 模型，擅长长文本处理和对话",
+    description: "Moonshot Kimi 2.5，长文本和深度推理",
     maxTokens: 16384,
     supportsThinking: true,
+    speed: "powerful",
   },
 ];
 
@@ -66,6 +118,11 @@ function getNVIDIAModelId(modelId?: string): string {
     "glm-4-7": "z-ai/glm4.7",
     "glm-5": "z-ai/glm5",
     "kimi-2.5": "moonshotai/kimi-k2.5",
+    "kimi-k2": "moonshotai/kimi-k2-instruct",
+    "deepseek-v3.2": "deepseek-ai/deepseek-v3.2",
+    "gemma-3-27b": "google/gemma-3-27b-it",
+    "llama-3.3-70b": "meta/llama-3.3-70b-instruct",
+    "minimax-m2.5": "minimaxai/minimax-m2.5",
   };
   return modelMap[modelId || DEFAULT_MODEL] || modelMap[DEFAULT_MODEL];
 }
