@@ -20,6 +20,8 @@ import {
   RotateCcw,
   Copy,
   StopCircle,
+  CheckCircle2,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +32,7 @@ interface ChatMessage {
   content: string;
   timestamp: Date;
   agentType?: string;
+  savedSpec?: { specId: string; category: string; title: string };
 }
 
 const AVAILABLE_AGENTS = [
@@ -57,11 +60,17 @@ export function AiAssistantDrawer({
   chapterId,
   chapterContent,
   prefill,
+  novelTitle,
+  onContentGenerated,
+  onAdoptToChapter,
 }: {
   novelId: string;
   chapterId: string | null;
   chapterContent?: string;
   prefill?: string;
+  novelTitle?: string;
+  onContentGenerated?: () => void;
+  onAdoptToChapter?: (content: string) => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -75,7 +84,6 @@ export function AiAssistantDrawer({
   useEffect(() => {
     if (prefill && prefill.trim()) {
       setInput(prefill);
-      // Auto-focus the input
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [prefill]);
@@ -85,7 +93,7 @@ export function AiAssistantDrawer({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, loading]);
 
   // Focus input on mount
   useEffect(() => {
@@ -120,6 +128,7 @@ export function AiAssistantDrawer({
           chapterId,
           message: messageText,
           chapterContent: chapterContent?.slice(0, 3000),
+          novelTitle,
           stream: false,
         }),
         signal: abortRef.current.signal,
@@ -139,9 +148,15 @@ export function AiAssistantDrawer({
         content: output,
         timestamp: new Date(),
         agentType: selectedAgent,
+        savedSpec: data.savedSpec || undefined,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
+
+      // Notify workspace to refresh specs if content was auto-saved
+      if (data.savedSpec && onContentGenerated) {
+        onContentGenerated();
+      }
     } catch (err: any) {
       if (err.name === "AbortError") return;
       const errorMsg: ChatMessage = {
@@ -157,7 +172,7 @@ export function AiAssistantDrawer({
       abortRef.current = null;
       inputRef.current?.focus();
     }
-  }, [input, loading, selectedAgent, novelId, chapterId, chapterContent]);
+  }, [input, loading, selectedAgent, novelId, chapterId, chapterContent, novelTitle, onContentGenerated]);
 
   const stopGeneration = () => {
     abortRef.current?.abort();
@@ -179,7 +194,18 @@ export function AiAssistantDrawer({
     }
   };
 
+  // Adopt AI-generated content into the current chapter
+  const handleAdoptToChapter = (content: string) => {
+    if (onAdoptToChapter) {
+      onAdoptToChapter(content);
+    }
+  };
+
   const agentConfig = AVAILABLE_AGENTS.find((a) => a.value === selectedAgent);
+
+  // Check if the last assistant message has content that can be adopted
+  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant");
+  const canAdopt = lastAssistantMsg && onAdoptToChapter && ["writer", "editor", "hermes"].includes(lastAssistantMsg.agentType || "");
 
   return (
     <div className="flex flex-col h-full">
@@ -198,8 +224,9 @@ export function AiAssistantDrawer({
             ))}
           </SelectContent>
         </Select>
+        <div className="flex-1" />
         {messages.length > 0 && (
-          <Button variant="ghost" size="icon" className="size-7 ml-auto" onClick={clearChat}>
+          <Button variant="ghost" size="icon" className="size-7" onClick={clearChat} title="清除对话">
             <RotateCcw className="size-3.5" />
           </Button>
         )}
@@ -280,13 +307,30 @@ export function AiAssistantDrawer({
                   )}>
                     {msg.content}
                   </div>
+                  {/* Saved spec indicator */}
+                  {msg.savedSpec && (
+                    <div className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="size-3" />
+                      <span>已保存到「{msg.savedSpec.title}」</span>
+                    </div>
+                  )}
                   {msg.role === "assistant" && (
-                    <button
-                      className="text-[9px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5"
-                      onClick={() => copyMessage(msg.content)}
-                    >
-                      <Copy className="size-2.5" />复制
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="text-[9px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5"
+                        onClick={() => copyMessage(msg.content)}
+                      >
+                        <Copy className="size-2.5" />复制
+                      </button>
+                      {onAdoptToChapter && ["writer", "editor", "hermes"].includes(msg.agentType || "") && (
+                        <button
+                          className="text-[9px] text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors flex items-center gap-0.5"
+                          onClick={() => handleAdoptToChapter(msg.content)}
+                        >
+                          <BookOpen className="size-2.5" />写入章节
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

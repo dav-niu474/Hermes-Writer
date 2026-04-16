@@ -337,6 +337,15 @@ export function WorkspaceView() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const aiMsgTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto-dismiss AI message after 5s
+  useEffect(() => {
+    if (aiMessage) {
+      aiMsgTimeoutRef.current = setTimeout(() => setAiMessage(""), 5000);
+    }
+    return () => { if (aiMsgTimeoutRef.current) clearTimeout(aiMsgTimeoutRef.current); };
+  }, [aiMessage]);
 
   // ===== Derived state =====
   const currentChapter = chapters.find((c) => c.id === selectedChapterId);
@@ -621,15 +630,9 @@ export function WorkspaceView() {
     if (!selectedNovelId) return;
     const catConfig = getCategoryConfig(category);
     setAiGenerating(category);
+    setAiMessage("");
 
     try {
-      const novelContext = [
-        currentNovel?.title ? `作品名：${currentNovel.title}` : "",
-        currentNovel?.genre ? `类型：${currentNovel.genre}` : "",
-        currentNovel?.description ? `简介：${currentNovel.description}` : "",
-        characters.length > 0 ? `已有角色：${characters.map((c) => `${c.name}(${c.role})`).join("、")}` : "",
-      ].filter(Boolean).join("\n");
-
       // Also include existing specs as context
       const existingSpecs = specs.filter((s) => s.category === category);
       const existingContent = existingSpecs.length > 0
@@ -652,47 +655,64 @@ export function WorkspaceView() {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const generatedContent = data.output || data.content || data.text || "";
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "AI 生成失败");
+      }
 
-        if (generatedContent) {
-          if (existingSpecs.length > 0) {
-            // Update existing spec
-            await fetch(`/api/specs/${existingSpecs[0].id}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ content: generatedContent }),
-            });
-            if (selectedSpecId === existingSpecs[0].id) {
-              setSpecContent(generatedContent);
-            }
-            setSelectedSpecId(existingSpecs[0].id);
-            setSpecContent(generatedContent);
-          } else {
-            // Create new spec
-            const newRes = await fetch("/api/specs", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                novelId: selectedNovelId,
-                category,
-                title: `${currentNovel?.title || "小说"} - ${catConfig.label}`,
-                content: generatedContent,
-              }),
-            });
-            if (newRes.ok) {
-              const newSpec = await newRes.json();
-              setSelectedSpecId(newSpec.id);
-              setSpecContent(newSpec.content);
-            }
+      const data = await res.json();
+      const generatedContent = data.output || data.content || data.text || "";
+
+      if (!generatedContent) {
+        setAiMessage("⚠️ AI 未返回内容，请重试");
+        return;
+      }
+
+      // If the API already auto-saved to spec, just refresh the list
+      // Otherwise, manually save
+      if (data.savedSpec) {
+        // API auto-saved successfully
+        const savedCat = data.savedSpec.category;
+        const matchingSpecs = specs.filter((s) => s.category === savedCat);
+        if (matchingSpecs.length > 0) {
+          setSelectedSpecId(matchingSpecs[0].id);
+          setSpecContent(generatedContent);
+        }
+      } else {
+        // API didn't auto-save (e.g., DB not available), do it manually
+        if (existingSpecs.length > 0) {
+          await fetch(`/api/specs/${existingSpecs[0].id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content: generatedContent }),
+          });
+          setSelectedSpecId(existingSpecs[0].id);
+          setSpecContent(generatedContent);
+        } else {
+          const newRes = await fetch("/api/specs", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              novelId: selectedNovelId,
+              category,
+              title: `${currentNovel?.title || "小说"} - ${catConfig.label}`,
+              content: generatedContent,
+            }),
+          });
+          if (newRes.ok) {
+            const newSpec = await newRes.json();
+            setSelectedSpecId(newSpec.id);
+            setSpecContent(newSpec.content);
           }
-          setExpandedCategories((prev) => ({ ...prev, [category]: true }));
-          loadSpecs();
         }
       }
-    } catch (e) {
+
+      setExpandedCategories((prev) => ({ ...prev, [category]: true }));
+      loadSpecs();
+      setAiMessage(`✅ ${catConfig.label}已生成并保存`);
+    } catch (e: any) {
       console.error("AI generation failed:", e);
+      setAiMessage(`❌ ${catConfig.label}生成失败: ${e.message || "未知错误"}`);
     } finally {
       setAiGenerating(null);
     }
@@ -1388,6 +1408,23 @@ export function WorkspaceView() {
           </DialogContent>
         </Dialog>
 
+        {/* AI Generation Feedback Toast */}
+        {aiMessage && (
+          <div className="fixed bottom-4 right-4 z-50 max-w-sm">
+            <div className={cn(
+              "px-4 py-3 rounded-xl shadow-lg border text-sm flex items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-200",
+              aiMessage.startsWith("✅") && "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/50 dark:border-emerald-800/50 dark:text-emerald-200",
+              aiMessage.startsWith("❌") && "bg-red-50 border-red-200 text-red-800 dark:bg-red-950/50 dark:border-red-800/50 dark:text-red-200",
+              aiMessage.startsWith("⚠️") && "bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950/50 dark:border-amber-800/50 dark:text-amber-200",
+            )}>
+              <span>{aiMessage}</span>
+              <button className="ml-2 text-current/50 hover:text-current" onClick={() => setAiMessage("")}>
+                <span className="text-base leading-none">&times;</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Delete Confirm Dialog */}
         <Dialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
           <DialogContent className="sm:max-w-sm">
@@ -1403,7 +1440,7 @@ export function WorkspaceView() {
         </Dialog>
 
         {/* AI Assistant Drawer */}
-        <Sheet open={showAiAssistant} onOpenChange={(open) => { setShowAiAssistant(open); if (!open) setAiPrefill(""); }}>
+        <Sheet open={showAiAssistant} onOpenChange={(open) => { setShowAiAssistant(open); if (!open) { setAiPrefill(""); loadSpecs(); loadNovelData(); } }}>
           <SheetContent side="bottom" className="h-[70vh] rounded-t-2xl">
             <SheetHeader>
               <SheetTitle>AI 助手</SheetTitle>
@@ -1414,6 +1451,11 @@ export function WorkspaceView() {
               chapterId={selectedChapterId}
               chapterContent={chapterContent}
               prefill={aiPrefill}
+              novelTitle={currentNovel?.title}
+              onContentGenerated={() => { loadSpecs(); loadNovelData(); }}
+              onAdoptToChapter={(content) => {
+                setChapterContent(chapterContent + (chapterContent ? "\n\n" : "") + content);
+              }}
             />
           </SheetContent>
         </Sheet>
